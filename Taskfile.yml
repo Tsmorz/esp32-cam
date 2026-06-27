@@ -12,7 +12,7 @@ tasks:
   flash:
     desc: "Flash firmware, then open serial monitor — Ctrl+C to exit"
     cmds:
-      - pio run -e {{.ENV}} -t upload
+      - pio run -e {{.ENV}} -t clean -t upload
       - pio device monitor -e {{.ENV}}
 
   monitor:
@@ -40,12 +40,7 @@ tasks:
         task check
         task build
 
-  clean:
-    desc: "Remove build artifacts"
-    cmds:
-      - pio run -e {{.ENV}} --target clean
-
-  erase:
+  factory:
     desc: "Erase all flash — clears saved WiFi credentials"
     cmds:
       - pio run -e {{.ENV}} --target erase

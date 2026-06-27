@@ -6,52 +6,51 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#define AXP313A_ADDR        0x36
-#define AXP313A_PWR_CTL     0x10   // output enable register (bit1=DC1, bit3=ALDO1, bit4=ALDO2, bit5=ALDO3)
-#define AXP313A_DC1_VOL     0x82   // DCDC1 voltage (500mV + n×10mV)
-#define AXP313A_ALDO1_CTL   0x90   // ALDO1: bit7=enable, bits4:0=voltage (500mV + n×100mV)
-#define AXP313A_ALDO2_CTL   0x91   // ALDO2: bit7=enable, bits4:0=voltage
-#define AXP313A_ALDO3_CTL   0x92   // ALDO3: bit7=enable, bits4:0=voltage
+#define AXP313A_ADDR    0x36
+#define AXP313A_PWR_CTL 0x10 // enable: bit0=DCDC1, bit1=DCDC2, bit2=DCDC3, bit3=ALDO1, bit4=DLDO1
+#define AXP313A_DC1_VOL   0x13 // DCDC1 voltage: 500mV + n×10mV  (7-bit, mask 0x7F)
+#define AXP313A_ALDO1_CTL 0x16 // ALDO1 voltage: 500mV + n×100mV (5-bit, mask 0x1F)
+#define AXP313A_DLDO1_CTL 0x17 // DLDO1 voltage: 500mV + n×100mV (5-bit, mask 0x1F)
 
 class DFRobot_AXP313A {
 public:
-    enum eCameraType_t { eOV2640 = 0, eOV7725 };
+  enum eCameraType_t { eOV2640 = 0, eOV7725 };
 
-    int begin(TwoWire &wire = Wire) {
-        _wire = &wire;
-        _wire->beginTransmission(AXP313A_ADDR);
-        return (_wire->endTransmission() == 0) ? 0 : -1;
-    }
+  int begin(TwoWire &wire = Wire) {
+    _wire = &wire;
+    _wire->beginTransmission(AXP313A_ADDR);
+    return (_wire->endTransmission() == 0) ? 0 : -1;
+  }
 
-    void enableCameraPower(eCameraType_t type = eOV2640) {
-        // DVDD 1.2V via DCDC1 — enable bit1 of PWR_CTL, voltage = (1200-500)/10 = 70
-        writeReg(AXP313A_DC1_VOL, 70);
-        writeReg(AXP313A_PWR_CTL, readReg(AXP313A_PWR_CTL) | 0x02);
+  void enableCameraPower(eCameraType_t type = eOV2640) {
+    // DCDC1 (0x10 bit0) is already ON at boot powering a critical rail — do NOT change its
+    // voltage or it will crash the board. Camera DVDD (1.2V) is provided by DCDC2 (bit1),
+    // which is also on at boot (reg 0x14 = 0x46 = 70 → 500+70×10 = 1200mV).
+    // We only need to enable ALDO1 (DOVDD 1.8V) and DLDO1 (AVDD 2.8V).
+    writeReg(AXP313A_ALDO1_CTL, 13); // DOVDD 1.8V: 500 + 13×100 = 1800mV
+    writeReg(AXP313A_DLDO1_CTL, 23); // AVDD  2.8V: 500 + 23×100 = 2800mV
 
-        // DOVDD 1.8V via ALDO1 — bit7=enable, n=(1800-500)/100=13
-        writeReg(AXP313A_ALDO1_CTL, 0x80 | 13);
+    // Enable ALDO1 (bit3) and DLDO1 (bit4) — leave DCDC1/2/3 unchanged
+    writeReg(AXP313A_PWR_CTL, readReg(AXP313A_PWR_CTL) | 0x08 | 0x10);
 
-        // AVDD 2.8V via ALDO2 — bit7=enable, n=(2800-500)/100=23
-        writeReg(AXP313A_ALDO2_CTL, 0x80 | 23);
-
-        delay(10);
-    }
+    delay(10);
+  }
 
 private:
-    TwoWire *_wire = &Wire;
+  TwoWire *_wire = &Wire;
 
-    void writeReg(uint8_t reg, uint8_t val) {
-        _wire->beginTransmission(AXP313A_ADDR);
-        _wire->write(reg);
-        _wire->write(val);
-        _wire->endTransmission();
-    }
+  void writeReg(uint8_t reg, uint8_t val) {
+    _wire->beginTransmission(AXP313A_ADDR);
+    _wire->write(reg);
+    _wire->write(val);
+    _wire->endTransmission();
+  }
 
-    uint8_t readReg(uint8_t reg) {
-        _wire->beginTransmission(AXP313A_ADDR);
-        _wire->write(reg);
-        _wire->endTransmission(false);
-        _wire->requestFrom(AXP313A_ADDR, (uint8_t)1);
-        return _wire->available() ? _wire->read() : 0;
-    }
+  uint8_t readReg(uint8_t reg) {
+    _wire->beginTransmission(AXP313A_ADDR);
+    _wire->write(reg);
+    _wire->endTransmission(false);
+    _wire->requestFrom(AXP313A_ADDR, (uint8_t)1);
+    return _wire->available() ? _wire->read() : 0;
+  }
 };
