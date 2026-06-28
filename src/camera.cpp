@@ -29,31 +29,93 @@ h2{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#00e5ff;mar
   <canvas id="ov" width="800" height="600"></canvas>
 </div>
 <script>
-const ctx = document.getElementById('ov').getContext('2d');
-async function poll() {
-  try {
-    const d = await (await fetch('/detections')).json();
-    ctx.clearRect(0, 0, 800, 600);
-    ctx.strokeStyle = '#00e5ff';
-    ctx.fillStyle   = '#00e5ff';
-    ctx.lineWidth   = 2;
-    ctx.font        = 'bold 13px monospace';
-    for (const t of d.tags) {
-      const c = t.corners;
-      ctx.beginPath();
-      ctx.moveTo(c[0][0], c[0][1]);
-      ctx.lineTo(c[1][0], c[1][1]);
-      ctx.lineTo(c[2][0], c[2][1]);
-      ctx.lineTo(c[3][0], c[3][1]);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fillText('ID:' + t.id + '  z:' + t.pose.tz.toFixed(2) + 'm',
-                   c[0][0] + 4, c[0][1] - 6);
-    }
-  } catch(_) {}
-  setTimeout(poll, 200);
+const ctx  = document.getElementById('ov').getContext('2d');
+let tags   = [];
+let quat   = [1, 0, 0, 0];  // [w, x, y, z] identity
+
+// ── Data polling ──────────────────────────────────────────────────────────────
+async function pollDetections() {
+  try { const d = await (await fetch('/detections')).json(); tags = d.tags; } catch(_) {}
+  setTimeout(pollDetections, 200);
 }
-poll();
+async function pollPose() {
+  try { const d = await (await fetch('/pose')).json(); quat = d.q; } catch(_) {}
+  setTimeout(pollPose, 50);
+}
+
+// ── Quaternion → rotation matrix ──────────────────────────────────────────────
+function quatToMat(w, x, y, z) {
+  return [
+    [1-2*(y*y+z*z),   2*(x*y-w*z),   2*(x*z+w*y)],
+    [  2*(x*y+w*z), 1-2*(x*x+z*z),   2*(y*z-w*x)],
+    [  2*(x*z-w*y),   2*(y*z+w*x), 1-2*(x*x+y*y)]
+  ];
+}
+
+// ── Perspective project a rotated unit vector onto the canvas ─────────────────
+function project(R, v, ox, oy, scale) {
+  const xr = R[0][0]*v[0] + R[0][1]*v[1] + R[0][2]*v[2];
+  const yr = R[1][0]*v[0] + R[1][1]*v[1] + R[1][2]*v[2];
+  const zr = R[2][0]*v[0] + R[2][1]*v[1] + R[2][2]*v[2];
+  const d  = 2.5 + zr;  // perspective depth
+  return [ox + scale * xr / d, oy - scale * yr / d];
+}
+
+// ── Draw one axis arrow ───────────────────────────────────────────────────────
+function drawAxis(R, v, ox, oy, scale, color, label) {
+  const [tx, ty] = project(R, v, ox, oy, scale);
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = 3;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(tx, ty); ctx.stroke();
+  // Arrowhead
+  const angle = Math.atan2(ty - oy, tx - ox);
+  const h = 10;
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - h*Math.cos(angle-0.4), ty - h*Math.sin(angle-0.4));
+  ctx.lineTo(tx - h*Math.cos(angle+0.4), ty - h*Math.sin(angle+0.4));
+  ctx.closePath(); ctx.fill();
+  ctx.font = 'bold 12px monospace';
+  ctx.fillText(label, tx + 5, ty + 4);
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function render() {
+  ctx.clearRect(0, 0, 800, 600);
+
+  // Tag bounding boxes + labels
+  ctx.strokeStyle = '#00e5ff';
+  ctx.fillStyle   = '#00e5ff';
+  ctx.lineWidth   = 2;
+  ctx.font        = 'bold 13px monospace';
+  for (const t of tags) {
+    const c = t.corners;
+    ctx.beginPath();
+    ctx.moveTo(c[0][0], c[0][1]); ctx.lineTo(c[1][0], c[1][1]);
+    ctx.lineTo(c[2][0], c[2][1]); ctx.lineTo(c[3][0], c[3][1]);
+    ctx.closePath(); ctx.stroke();
+    ctx.fillText('ID:' + t.id + '  z:' + t.pose.tz.toFixed(2) + 'm',
+                 c[0][0] + 4, c[0][1] - 6);
+  }
+
+  // IMU orientation axes (bottom-left corner)
+  const ox = 80, oy = 530, scale = 65;
+  // Semi-transparent background circle
+  ctx.fillStyle = 'rgba(13,15,18,0.6)';
+  ctx.beginPath(); ctx.arc(ox, oy, scale + 12, 0, 2*Math.PI); ctx.fill();
+
+  const R = quatToMat(...quat);
+  drawAxis(R, [1,0,0], ox, oy, scale, '#ff4444', 'X');
+  drawAxis(R, [0,1,0], ox, oy, scale, '#44ff88', 'Y');
+  drawAxis(R, [0,0,1], ox, oy, scale, '#4488ff', 'Z');
+
+  requestAnimationFrame(render);
+}
+
+pollDetections();
+pollPose();
+requestAnimationFrame(render);
 </script>
 </body></html>)rawliteral";
 

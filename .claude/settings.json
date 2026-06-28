@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(task check)",
+      "Bash(pio pkg search *)"
+    ]
+  }
+}

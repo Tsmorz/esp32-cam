@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "config.h"
 #include "detector.h"
+#include "imu.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_http_server.h>
@@ -9,8 +10,8 @@
 static DFRobot_AXP313A axp;
 static httpd_handle_t server = nullptr;
 
-// ── /detections — JSON snapshot of the most recent AprilTag frame
-// ─────────────
+// ── /detections
+// ───────────────────────────────────────────────────────────────
 static esp_err_t detections_handler(httpd_req_t *req) {
   const DetectionFrame &f = detector_latest();
   char buf[2048];
@@ -35,6 +36,20 @@ static esp_err_t detections_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+// ── /pose — IMU quaternion for browser axes overlay
+// ───────────────────────────
+static esp_err_t pose_handler(httpd_req_t *req) {
+  double q[4];
+  imu_get_quat(q);
+  char buf[64];
+  int len = snprintf(buf, sizeof(buf), "{\"q\":[%.6f,%.6f,%.6f,%.6f]}", q[0],
+                     q[1], q[2], q[3]);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_send(req, buf, len);
+  return ESP_OK;
+}
+
 static void server_start() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   if (httpd_start(&server, &cfg) != ESP_OK)
@@ -42,9 +57,11 @@ static void server_start() {
   httpd_uri_t idx = {"/", HTTP_GET, index_handler, nullptr};
   httpd_uri_t stm = {"/stream", HTTP_GET, stream_handler, nullptr};
   httpd_uri_t det = {"/detections", HTTP_GET, detections_handler, nullptr};
+  httpd_uri_t pose = {"/pose", HTTP_GET, pose_handler, nullptr};
   httpd_register_uri_handler(server, &idx);
   httpd_register_uri_handler(server, &stm);
   httpd_register_uri_handler(server, &det);
+  httpd_register_uri_handler(server, &pose);
   Serial.println("[http] server started");
 }
 
@@ -69,7 +86,6 @@ void setup() {
   Serial.setDebugOutput(true);
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
 
-  // AXP313A power IC — enables DOVDD (1.8V) and AVDD (2.8V) for the camera
   Wire.begin();
   while (axp.begin() != 0) {
     Serial.println("[axp] not found, retrying...");
@@ -82,8 +98,8 @@ void setup() {
   if (!camera_init())
     return;
   detector_init();
+  imu_init(); // non-fatal if IMU absent — axes will show identity quaternion
 
-  // AP+STA: always broadcast own hotspot, also try joining existing WiFi
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
   Serial.printf("[ap]  SSID: %s  http://%s\n", AP_SSID,
@@ -102,7 +118,7 @@ void setup() {
     Serial.println("\n[sta] not connected — AP only");
 
   server_start();
-  Serial.println("[ready] type ? for stats");
+  Serial.println("[ready]  ?=stats  t=toggle-detector");
 }
 
 void loop() {
@@ -114,12 +130,19 @@ void loop() {
       detector_toggle();
   }
 
-  // Run AprilTag detection every 500 ms
+  // IMU at ~100 Hz
+  static uint32_t last_imu = 0;
+  if (millis() - last_imu >= 10) {
+    imu_update();
+    last_imu = millis();
+  }
+
+  // AprilTag detection at 2 Hz
   static uint32_t last_detect = 0;
   if (millis() - last_detect >= 500) {
     detector_grab();
     last_detect = millis();
   }
 
-  delay(10);
+  delay(1);
 }
