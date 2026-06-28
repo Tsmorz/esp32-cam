@@ -19,10 +19,42 @@ static const char INDEX_HTML[] = R"rawliteral(
 body{margin:0;background:#0d0f12;display:flex;flex-direction:column;align-items:center;
 font-family:'IBM Plex Mono',monospace;color:#c8d0e0;}
 h2{font-size:13px;letter-spacing:.2em;text-transform:uppercase;color:#00e5ff;margin:16px 0 8px;}
-img{max-width:100%;border:1px solid #1e2330;}
+#wrap{position:relative;display:inline-block;}
+#cam{display:block;max-width:100%;border:1px solid #1e2330;}
+#ov{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
 </style></head><body>
 <h2>GripLink — Wrist Camera</h2>
-<img src="/stream">
+<div id="wrap">
+  <img id="cam" src="/stream">
+  <canvas id="ov" width="800" height="600"></canvas>
+</div>
+<script>
+const ctx = document.getElementById('ov').getContext('2d');
+async function poll() {
+  try {
+    const d = await (await fetch('/detections')).json();
+    ctx.clearRect(0, 0, 800, 600);
+    ctx.strokeStyle = '#00e5ff';
+    ctx.fillStyle   = '#00e5ff';
+    ctx.lineWidth   = 2;
+    ctx.font        = 'bold 13px monospace';
+    for (const t of d.tags) {
+      const c = t.corners;
+      ctx.beginPath();
+      ctx.moveTo(c[0][0], c[0][1]);
+      ctx.lineTo(c[1][0], c[1][1]);
+      ctx.lineTo(c[2][0], c[2][1]);
+      ctx.lineTo(c[3][0], c[3][1]);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillText('ID:' + t.id + '  z:' + t.pose.tz.toFixed(2) + 'm',
+                   c[0][0] + 4, c[0][1] - 6);
+    }
+  } catch(_) {}
+  setTimeout(poll, 200);
+}
+poll();
+</script>
 </body></html>)rawliteral";
 
 bool camera_init() {

@@ -1,6 +1,7 @@
 #include "DFRobot_AXP313A.h"
 #include "camera.h"
 #include "config.h"
+#include "detector.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_http_server.h>
@@ -8,13 +9,39 @@
 static DFRobot_AXP313A axp;
 static httpd_handle_t server = nullptr;
 
+// ── /detections — JSON snapshot of the most recent AprilTag frame ─────────────
+static esp_err_t detections_handler(httpd_req_t *req) {
+  const DetectionFrame &f = detector_latest();
+  char buf[2048];
+  int pos = snprintf(buf, sizeof(buf), "{\"count\":%d,\"tags\":[", f.count);
+  for (int i = 0; i < f.count; i++) {
+    const TagDetection &t = f.tags[i];
+    if (i > 0) pos += snprintf(buf + pos, sizeof(buf) - pos, ",");
+    pos += snprintf(buf + pos, sizeof(buf) - pos,
+      "{\"id\":%d,"
+      "\"corners\":[[%.1f,%.1f],[%.1f,%.1f],[%.1f,%.1f],[%.1f,%.1f]],"
+      "\"pose\":{\"tx\":%.4f,\"ty\":%.4f,\"tz\":%.4f}}",
+      t.id,
+      t.corners[0][0], t.corners[0][1], t.corners[1][0], t.corners[1][1],
+      t.corners[2][0], t.corners[2][1], t.corners[3][0], t.corners[3][1],
+      t.tx, t.ty, t.tz);
+  }
+  pos += snprintf(buf + pos, sizeof(buf) - pos, "]}");
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_send(req, buf, pos);
+  return ESP_OK;
+}
+
 static void server_start() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   if (httpd_start(&server, &cfg) != ESP_OK) return;
-  httpd_uri_t idx = {"/", HTTP_GET, index_handler, nullptr};
-  httpd_uri_t stm = {"/stream", HTTP_GET, stream_handler, nullptr};
+  httpd_uri_t idx  = {"/",           HTTP_GET, index_handler,      nullptr};
+  httpd_uri_t stm  = {"/stream",     HTTP_GET, stream_handler,     nullptr};
+  httpd_uri_t det  = {"/detections", HTTP_GET, detections_handler, nullptr};
   httpd_register_uri_handler(server, &idx);
   httpd_register_uri_handler(server, &stm);
+  httpd_register_uri_handler(server, &det);
   Serial.println("[http] server started");
 }
 
@@ -48,6 +75,7 @@ void setup() {
   delay(200);
 
   if (!camera_init()) return;
+  detector_init();
 
   // AP+STA: always broadcast own hotspot, also try joining existing WiFi
   WiFi.mode(WIFI_AP_STA);
@@ -74,6 +102,15 @@ void loop() {
   if (Serial.available()) {
     char c = Serial.read();
     if (c == '?') print_stats();
+    if (c == 't') detector_toggle();
   }
+
+  // Run AprilTag detection every 500 ms
+  static uint32_t last_detect = 0;
+  if (millis() - last_detect >= 500) {
+    detector_grab();
+    last_detect = millis();
+  }
+
   delay(10);
 }
