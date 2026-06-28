@@ -12,6 +12,11 @@
 #define AP_SSID "GripLink-Cam"
 #define AP_PASS "griplink1"
 
+// ── Battery ADC ──────────────────────────────────────────────────────────────
+// GPIO14 has a 2:1 voltage divider on the FireBeetle 2 ESP32-S3.
+// Verify against your board schematic; change if readings look wrong.
+#define BAT_PIN 14
+
 // ── FireBeetle 2 ESP32-S3 DVP camera pins ────────────────────────────────────
 #define CAM_PIN_PWDN  -1
 #define CAM_PIN_RESET -1

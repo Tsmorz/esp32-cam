@@ -25,6 +25,15 @@ build_flags =
     -DWIFI_PASS=\"MyPassword\"
 ```
 
+## Workflow (run after every code edit)
+
+```bash
+task format   # clang-format on main.cpp and DFRobot_AXP313A.h
+task check    # cppcheck static analysis — fails only on HIGH/MEDIUM
+task build    # pio compile
+```
+LOW/style cppcheck findings and all clangd diagnostics are false positives — trust the PlatformIO build output.
+
 ## Architecture
 
 Multi-file Arduino firmware targeting the **DFRobot FireBeetle 2 ESP32-S3 V1.0** with OV2640 camera and LSM6DSOX IMU. No RTOS tasks — the ESP-IDF HTTP server runs its own internal tasks; `loop()` handles IMU polling, AprilTag detection, and serial commands.
@@ -42,13 +51,18 @@ Multi-file Arduino firmware targeting the **DFRobot FireBeetle 2 ESP32-S3 V1.0**
 3. `detector_init()` allocates PSRAM buffers (RGB565 + grayscale + JPEG copy) and creates the tag36h11 apriltag detector
 4. `imu_init()` verifies LSM6DSOX WHO_AM_I, configures 104 Hz ODR, initialises VQF
 5. WiFi starts in `WIFI_AP_STA` — AP always at 192.168.4.1, STA attempts home WiFi for 10 s
-6. HTTP server registers four handlers: `/`, `/stream`, `/detections`, `/pose`
+6. HTTP server registers nine handlers: `/`, `/stream`, `/detections`, `/pose`, `/battery`, `/wifi/scan`, `/wifi/connect`, `/ota`, `/camera/set`
 
 **HTTP handlers:**
-- `index_handler` — serves `INDEX_HTML` (raw string literal in `camera.cpp`); includes canvas overlay JS that polls `/detections` at 200 ms and `/pose` at 50 ms, renders in a single `requestAnimationFrame` loop
+- `index_handler` — serves `INDEX_HTML` (raw string `R"GCAM(...)GCAM"` in `camera.cpp`); full dashboard: smaller camera with AprilTag+axes overlay, rolling IMU euler plot, battery bar, WiFi scan+connect, camera settings panel, OTA drag-and-drop. Polls `/detections` at 200 ms, `/pose` at 50 ms, `/battery` at 5 s. `requestAnimationFrame` render loop draws everything.
 - `stream_handler` — infinite multipart JPEG loop; stays open until client disconnects
-- `detections_handler` — returns JSON with tag count, corner pixel coords (full-res), and translation pose
-- `pose_handler` — returns `{"q":[w,x,y,z]}` from the VQF filter
+- `detections_handler` — JSON with tag count, corner pixel coords (full-res 800×600), and translation pose
+- `pose_handler` — `{"q":[w,x,y,z]}` from the VQF filter
+- `battery_handler` — `{"voltage":X.XXX,"percent":N}` via `analogReadMilliVolts(BAT_PIN)` × 2 ÷ 1000; `BAT_PIN` defined in `config.h` (default GPIO 14 — verify against board schematic)
+- `wifi_scan_handler` — blocking `WiFi.scanNetworks()`, returns `{"sta":"SSID","networks":[{"ssid":"...","rssi":-N,"enc":0|1},...]}` (up to 24 APs)
+- `wifi_connect_handler` — POST JSON `{"ssid":"...","pass":"..."}`, calls `WiFi.begin()` to reconnect STA
+- `ota_handler` — POST raw binary (`Content-Type: application/octet-stream`); reads in 2 KB chunks via `esp_ota_ops.h` (`esp_ota_begin/write/end`), calls `esp_restart()` on success. Uses `esp_ota_get_next_update_partition()` — requires two OTA app slots in the partition table.
+- `camera_set_handler` — `GET /camera/set?var=NAME&val=N`; calls `camera_set()` in `camera.cpp` which dispatches to `sensor_t` setters. Supported vars: `framesize`, `quality`, `brightness`, `contrast`, `saturation`, `hmirror`, `vflip`, `awb`, `aec`.
 
 **`loop()` timing:**
 - Serial commands: every iteration (1 ms delay)
@@ -79,7 +93,7 @@ Multi-file Arduino firmware targeting the **DFRobot FireBeetle 2 ESP32-S3 V1.0**
 ## Board-specific notes
 
 - N16R8 module uses OPI PSRAM — changing `board_build.arduino.memory_type` causes camera init to fail at runtime
-- `huge_app.csv` partition scheme required — camera + HTTP + apriltag exceeds the default partition
+- `huge_app.csv` partition scheme required — camera + HTTP + apriltag stack exceeds the default. `partitions_ota.csv` (two 2 MB OTA slots) is in the repo but causes a ROM crash before `setup()` on this board — the 2 MB partition size shifts the PSRAM virtual mapping. Use `huge_app.csv` until a compatible OTA partition layout is found.
 - On first flash, power-cycle (not just reset) — AXP313A sometimes needs a hard reset to bring rails up
 - If no COM port visible: hold BOOT, tap RST, release BOOT, then flash
 - `pio device monitor` requires a real TTY and will fail when run from Claude Code's non-interactive shell — tell the user to run it in their own terminal

@@ -6,12 +6,45 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_http_server.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 
 static DFRobot_AXP313A axp;
 static httpd_handle_t server = nullptr;
 
+// ── helpers
+// ──────────────────────────────────────────────────────────────────
+static void json_esc(const char *in, char *out, size_t outlen) {
+  size_t o = 0;
+  for (const char *p = in; *p && o < outlen - 2; p++) {
+    if (*p == '"' || *p == '\\')
+      out[o++] = '\\';
+    if ((unsigned char)*p >= 0x20)
+      out[o++] = *p;
+  }
+  out[o] = '\0';
+}
+
+static bool json_str(const char *json, const char *key, char *out,
+                     size_t outlen) {
+  char needle[64];
+  snprintf(needle, sizeof(needle), "\"%s\":\"", key);
+  const char *p = strstr(json, needle);
+  if (!p)
+    return false;
+  p += strlen(needle);
+  size_t i = 0;
+  while (*p && *p != '"' && i < outlen - 1) {
+    if (*p == '\\' && *(p + 1))
+      p++;
+    out[i++] = *p++;
+  }
+  out[i] = '\0';
+  return true;
+}
+
 // ── /detections
-// ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
 static esp_err_t detections_handler(httpd_req_t *req) {
   const DetectionFrame &f = detector_latest();
   char buf[2048];
@@ -36,8 +69,8 @@ static esp_err_t detections_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-// ── /pose — IMU quaternion for browser axes overlay
-// ───────────────────────────
+// ── /pose
+// ───────────────────────────────────────────────────────────────────────
 static esp_err_t pose_handler(httpd_req_t *req) {
   double q[4];
   imu_get_quat(q);
@@ -50,18 +83,165 @@ static esp_err_t pose_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+// ── /battery
+// ─────────────────────────────────────────────────────────────────────
+static esp_err_t battery_handler(httpd_req_t *req) {
+  // GPIO14 has a 2:1 voltage divider on FireBeetle 2 ESP32-S3.
+  // Verify BAT_PIN in config.h if reading looks wrong.
+  uint32_t mv = analogReadMilliVolts(BAT_PIN);
+  float voltage = (float)mv * 2.0f / 1000.0f;
+  int percent = (int)((voltage - 3.0f) / 1.2f * 100.0f);
+  if (percent < 0)
+    percent = 0;
+  if (percent > 100)
+    percent = 100;
+  char buf[64];
+  int len = snprintf(buf, sizeof(buf), "{\"voltage\":%.3f,\"percent\":%d}",
+                     voltage, percent);
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_send(req, buf, len);
+  return ESP_OK;
+}
+
+// ── /wifi/scan
+// ───────────────────────────────────────────────────────────────────
+static esp_err_t wifi_scan_handler(httpd_req_t *req) {
+  int n = WiFi.scanNetworks(false, true); // blocking, include hidden
+  char buf[4096];
+  char esc[68];
+  json_esc(WiFi.SSID().c_str(), esc, sizeof(esc));
+  int pos = snprintf(buf, sizeof(buf), "{\"sta\":\"%s\",\"networks\":[", esc);
+  for (int i = 0; i < n && i < 24; i++) {
+    json_esc(WiFi.SSID(i).c_str(), esc, sizeof(esc));
+    if (i > 0)
+      pos += snprintf(buf + pos, sizeof(buf) - pos, ",");
+    pos +=
+        snprintf(buf + pos, sizeof(buf) - pos,
+                 "{\"ssid\":\"%s\",\"rssi\":%d,\"enc\":%d}", esc, WiFi.RSSI(i),
+                 (int)(WiFi.encryptionType(i) != WIFI_AUTH_OPEN));
+  }
+  pos += snprintf(buf + pos, sizeof(buf) - pos, "]}");
+  WiFi.scanDelete();
+  httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_send(req, buf, pos);
+  return ESP_OK;
+}
+
+// ── /wifi/connect
+// ────────────────────────────────────────────────────────────────
+static esp_err_t wifi_connect_handler(httpd_req_t *req) {
+  char body[256] = {};
+  int ret = httpd_req_recv(req, body, sizeof(body) - 1);
+  if (ret <= 0)
+    return ESP_FAIL;
+  char ssid[64] = {}, pass[128] = {};
+  json_str(body, "ssid", ssid, sizeof(ssid));
+  json_str(body, "pass", pass, sizeof(pass));
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_sendstr(req, "OK");
+  if (strlen(ssid) > 0) {
+    WiFi.disconnect();
+    WiFi.begin(ssid, pass);
+    Serial.printf("[sta] connecting to %s\n", ssid);
+  }
+  return ESP_OK;
+}
+
+// ── /ota
+// ────────────────────────────────────────────────────────────────────────
+// Uses ESP-IDF esp_ota_ops directly — avoids Arduino Update.h global
+// constructor (UpdateClass Update) which crashes before setup() on OPI PSRAM.
+static esp_err_t ota_handler(httpd_req_t *req) {
+  const esp_partition_t *dst = esp_ota_get_next_update_partition(NULL);
+  if (!dst) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "No OTA partition — check partition table");
+    return ESP_FAIL;
+  }
+  size_t total = req->content_len;
+  esp_ota_handle_t ota;
+  if (esp_ota_begin(dst, total > 0 ? total : OTA_SIZE_UNKNOWN, &ota) !=
+      ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "OTA begin failed");
+    return ESP_FAIL;
+  }
+  uint8_t buf[2048];
+  size_t remaining = total;
+  bool ok = true;
+  while (remaining > 0 || total == 0) {
+    size_t to_read =
+        (remaining > 0 && remaining < sizeof(buf)) ? remaining : sizeof(buf);
+    int recv = httpd_req_recv(req, (char *)buf, to_read);
+    if (recv == 0)
+      break;
+    if (recv < 0 || esp_ota_write(ota, buf, recv) != ESP_OK) {
+      ok = false;
+      break;
+    }
+    if (total > 0)
+      remaining -= recv;
+  }
+  if (!ok || esp_ota_end(ota) != ESP_OK ||
+      esp_ota_set_boot_partition(dst) != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "OTA write failed");
+    return ESP_FAIL;
+  }
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_sendstr(req, "OK");
+  delay(500);
+  esp_restart();
+  return ESP_OK;
+}
+
+// ── /camera/set
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t camera_set_handler(httpd_req_t *req) {
+  char qs[128] = {};
+  size_t qlen = httpd_req_get_url_query_len(req);
+  if (qlen > 0 && qlen < sizeof(qs)) {
+    httpd_req_get_url_query_str(req, qs, qlen + 1);
+    char varname[32] = {}, valstr[16] = {};
+    httpd_query_key_value(qs, "var", varname, sizeof(varname));
+    httpd_query_key_value(qs, "val", valstr, sizeof(valstr));
+    camera_set(varname, atoi(valstr));
+  }
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
 static void server_start() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+  cfg.max_uri_handlers = 12;
+  cfg.recv_wait_timeout = 30; // seconds — OTA uploads can be large
+  cfg.send_wait_timeout = 10;
   if (httpd_start(&server, &cfg) != ESP_OK)
     return;
+
   httpd_uri_t idx = {"/", HTTP_GET, index_handler, nullptr};
   httpd_uri_t stm = {"/stream", HTTP_GET, stream_handler, nullptr};
   httpd_uri_t det = {"/detections", HTTP_GET, detections_handler, nullptr};
   httpd_uri_t pose = {"/pose", HTTP_GET, pose_handler, nullptr};
+  httpd_uri_t bat = {"/battery", HTTP_GET, battery_handler, nullptr};
+  httpd_uri_t wscan = {"/wifi/scan", HTTP_GET, wifi_scan_handler, nullptr};
+  httpd_uri_t wconn = {"/wifi/connect", HTTP_POST, wifi_connect_handler,
+                       nullptr};
+  httpd_uri_t ota = {"/ota", HTTP_POST, ota_handler, nullptr};
+  httpd_uri_t camset = {"/camera/set", HTTP_GET, camera_set_handler, nullptr};
+
   httpd_register_uri_handler(server, &idx);
   httpd_register_uri_handler(server, &stm);
   httpd_register_uri_handler(server, &det);
   httpd_register_uri_handler(server, &pose);
+  httpd_register_uri_handler(server, &bat);
+  httpd_register_uri_handler(server, &wscan);
+  httpd_register_uri_handler(server, &wconn);
+  httpd_register_uri_handler(server, &ota);
+  httpd_register_uri_handler(server, &camset);
   Serial.println("[http] server started");
 }
 
@@ -83,6 +263,7 @@ static void print_stats() {
 
 void setup() {
   Serial.begin(115200);
+  delay(3000); // wait for USB CDC to enumerate before printing
   Serial.setDebugOutput(true);
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
 
@@ -98,7 +279,7 @@ void setup() {
   if (!camera_init())
     return;
   detector_init();
-  imu_init(); // non-fatal if IMU absent — axes will show identity quaternion
+  imu_init(); // non-fatal if IMU absent — axes show identity quaternion
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
@@ -130,14 +311,12 @@ void loop() {
       detector_toggle();
   }
 
-  // IMU at ~100 Hz
   static uint32_t last_imu = 0;
   if (millis() - last_imu >= 10) {
     imu_update();
     last_imu = millis();
   }
 
-  // AprilTag detection at 2 Hz
   static uint32_t last_detect = 0;
   if (millis() - last_detect >= 500) {
     detector_grab();
