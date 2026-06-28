@@ -125,6 +125,18 @@ void setup() {
     Serial.printf("[cam] init failed: 0x%x\n", err);
     return;
   }
+
+  // Tune OV2640 sensor
+  sensor_t *s = esp_camera_sensor_get();
+  if (s) {
+    s->set_whitebal(s, 1);
+    s->set_awb_gain(s, 1);
+    s->set_exposure_ctrl(s, 1);
+    s->set_aec2(s, 1);
+    s->set_gain_ctrl(s, 1);
+    s->set_bpc(s, 1);
+    s->set_wpc(s, 1);
+  }
   Serial.println("[cam] OV2640 ready");
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -146,6 +158,21 @@ void setup() {
   }
 }
 
+static void printStats() {
+  Serial.println("=== stats ===");
+  Serial.printf("  ssid : %s\n", WiFi.SSID().c_str());
+  Serial.printf("  ip   : %s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("  rssi : %d dBm\n", WiFi.RSSI());
+  Serial.printf("  url  : http://%s\n", WiFi.localIP().toString().c_str());
+  Serial.printf("  heap : %u bytes free\n", ESP.getFreeHeap());
+  Serial.printf("  psram: %u bytes free\n", ESP.getFreePsram());
+  Serial.println("=============");
+}
+
 void loop() {
-  delay(10000);
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == '?') printStats();
+  }
+  delay(10);
 }
