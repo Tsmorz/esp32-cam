@@ -373,6 +373,10 @@ function cApply(btn){
   cSet('vflip',document.getElementById('fOn').classList.contains('on')?1:0);
   cSet('awb',document.getElementById('aOn').classList.contains('on')?1:0);
   cSet('aec',document.getElementById('eOn').classList.contains('on')?1:0);
+  var hm=document.getElementById('mOn').classList.contains('on');
+  var vf=document.getElementById('fOn').classList.contains('on');
+  var tr=[];if(hm)tr.push('scaleX(-1)');if(vf)tr.push('scaleY(-1)');
+  document.getElementById('camwrap').style.transform=tr.join(' ');
   var t=btn.textContent;btn.textContent='Applied ✓';
   setTimeout(function(){btn.textContent=t;},1000);
 }
@@ -476,13 +480,8 @@ void camera_set(const char *var, int val) {
   else if (!strcmp(var, "brightness")) s->set_brightness(s, val);
   else if (!strcmp(var, "contrast"))   s->set_contrast(s, val);
   else if (!strcmp(var, "saturation")) s->set_saturation(s, val);
-  else if (!strcmp(var, "hmirror")) {
-    s->set_hmirror(s, val);
-    s->set_framesize(s, s->status.framesize); // OV2640: DSP reinit picks up mirror
-  } else if (!strcmp(var, "vflip")) {
-    s->set_vflip(s, val);
-    s->set_framesize(s, s->status.framesize); // OV2640: DSP reinit picks up flip
-  }
+  else if (!strcmp(var, "hmirror"))    s->set_hmirror(s, val);
+  else if (!strcmp(var, "vflip"))      s->set_vflip(s, val);
   else if (!strcmp(var, "awb"))        s->set_whitebal(s, val);
   else if (!strcmp(var, "aec"))        s->set_exposure_ctrl(s, val);
   Serial.printf("[cam] set %s=%d\n", var, val);
