@@ -476,8 +476,13 @@ void camera_set(const char *var, int val) {
   else if (!strcmp(var, "brightness")) s->set_brightness(s, val);
   else if (!strcmp(var, "contrast"))   s->set_contrast(s, val);
   else if (!strcmp(var, "saturation")) s->set_saturation(s, val);
-  else if (!strcmp(var, "hmirror"))    s->set_hmirror(s, val);
-  else if (!strcmp(var, "vflip"))      s->set_vflip(s, val);
+  else if (!strcmp(var, "hmirror")) {
+    s->set_hmirror(s, val);
+    s->set_framesize(s, s->status.framesize); // OV2640: DSP reinit picks up mirror
+  } else if (!strcmp(var, "vflip")) {
+    s->set_vflip(s, val);
+    s->set_framesize(s, s->status.framesize); // OV2640: DSP reinit picks up flip
+  }
   else if (!strcmp(var, "awb"))        s->set_whitebal(s, val);
   else if (!strcmp(var, "aec"))        s->set_exposure_ctrl(s, val);
   Serial.printf("[cam] set %s=%d\n", var, val);
