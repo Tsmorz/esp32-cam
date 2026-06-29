@@ -86,18 +86,24 @@ static esp_err_t pose_handler(httpd_req_t *req) {
 // ── /battery
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t battery_handler(httpd_req_t *req) {
-  // GPIO14 has a 2:1 voltage divider on FireBeetle 2 ESP32-S3.
-  // Verify BAT_PIN in config.h if reading looks wrong.
+  // GPIO14 = ADC2_CH3 on ESP32-S3. ADC2 is blocked when WiFi is active;
+  // analogReadMilliVolts returns 0 in that case. Return -1 sentinel so
+  // the dashboard can show "N/A" instead of a bogus 0V reading.
   uint32_t mv = analogReadMilliVolts(BAT_PIN);
-  float voltage = (float)mv * 2.0f / 1000.0f;
-  int percent = (int)((voltage - 3.0f) / 1.2f * 100.0f);
-  if (percent < 0)
-    percent = 0;
-  if (percent > 100)
-    percent = 100;
   char buf[64];
-  int len = snprintf(buf, sizeof(buf), "{\"voltage\":%.3f,\"percent\":%d}",
-                     voltage, percent);
+  int len;
+  if (mv < 100) {
+    len = snprintf(buf, sizeof(buf), "{\"voltage\":-1,\"percent\":-1}");
+  } else {
+    float voltage = (float)mv * 2.0f / 1000.0f;
+    int percent = (int)((voltage - 3.0f) / 1.2f * 100.0f);
+    if (percent < 0)
+      percent = 0;
+    if (percent > 100)
+      percent = 100;
+    len = snprintf(buf, sizeof(buf), "{\"voltage\":%.3f,\"percent\":%d}",
+                   voltage, percent);
+  }
   httpd_resp_set_type(req, "application/json");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_send(req, buf, len);
@@ -107,7 +113,9 @@ static esp_err_t battery_handler(httpd_req_t *req) {
 // ── /wifi/scan
 // ───────────────────────────────────────────────────────────────────
 static esp_err_t wifi_scan_handler(httpd_req_t *req) {
-  int n = WiFi.scanNetworks(false, true); // blocking, include hidden
+  int n = WiFi.scanNetworks(false, false); // blocking, no hidden
+  if (n < 0)
+    n = 0;
   char buf[4096];
   char esc[68];
   json_esc(WiFi.SSID().c_str(), esc, sizeof(esc));
@@ -217,7 +225,9 @@ static esp_err_t camera_set_handler(httpd_req_t *req) {
 static void server_start() {
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.max_uri_handlers = 12;
-  cfg.recv_wait_timeout = 30; // seconds — OTA uploads can be large
+  cfg.max_open_sockets = 10;   // default 7 is too few with /stream + polling
+  cfg.lru_purge_enable = true; // drop oldest idle socket if limit is reached
+  cfg.recv_wait_timeout = 30;  // seconds — OTA uploads can be large
   cfg.send_wait_timeout = 10;
   if (httpd_start(&server, &cfg) != ESP_OK)
     return;
