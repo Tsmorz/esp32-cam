@@ -173,7 +173,7 @@ body{background:#0d0f12;color:#c8d0e0;font-family:'IBM Plex Mono',monospace;font
         <button class="tbtn" id="eOff" onclick="ton('eOff','eOn')">Off</button>
       </div>
     </div>
-    <button class="sbtn" onclick="cApply()" style="margin-top:6px;background:#00e5ff20;color:#00e5ff;border-color:#00e5ff40">Apply Settings</button>
+    <button class="sbtn" id="applyBtn" onclick="cApply(this)" style="margin-top:6px;background:#00e5ff20;color:#00e5ff;border-color:#00e5ff40">Apply Settings</button>
   </div>
   <div class="pnl">
     <div class="ttl">OTA Update</div>
@@ -363,7 +363,7 @@ async function wConn(){
 }
 
 function cSet(v,val){fetch('/camera/set?var='+v+'&val='+val);}
-function cApply(){
+function cApply(btn){
   cSet('framesize',document.getElementById('sFS').value);
   cSet('quality',document.getElementById('sQ').value);
   cSet('brightness',document.getElementById('sB').value);
@@ -373,6 +373,8 @@ function cApply(){
   cSet('vflip',document.getElementById('fOn').classList.contains('on')?1:0);
   cSet('awb',document.getElementById('aOn').classList.contains('on')?1:0);
   cSet('aec',document.getElementById('eOn').classList.contains('on')?1:0);
+  var t=btn.textContent;btn.textContent='Applied ✓';
+  setTimeout(function(){btn.textContent=t;},1000);
 }
 function ton(on,off){
   document.getElementById(on).classList.add('on');
