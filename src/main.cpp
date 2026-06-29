@@ -268,6 +268,7 @@ void setup() {
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
 
   Wire.begin();
+  Wire.setTimeOut(50); // prevent I2C hangs if bus is stuck
   while (axp.begin() != 0) {
     Serial.println("[axp] not found, retrying...");
     delay(1000);
@@ -276,10 +277,10 @@ void setup() {
   Serial.println("[axp] camera power enabled");
   delay(200);
 
+  imu_init(); // before camera_init — camera driver reinstalls I2C0 for SCCB
   if (!camera_init())
     return;
   detector_init();
-  imu_init(); // non-fatal if IMU absent — axes show identity quaternion
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);

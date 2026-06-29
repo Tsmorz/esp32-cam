@@ -111,7 +111,7 @@ body{background:#0d0f12;color:#c8d0e0;font-family:'IBM Plex Mono',monospace;font
     <div class="ttl">Camera Settings</div>
     <div class="crow">
       <span class="clbl">Resolution</span>
-      <select class="csel" onchange="cSet('framesize',this.value)">
+      <select class="csel" id="sFS">
         <option value="1">160&#215;120 QQVGA</option>
         <option value="4">240&#215;240</option>
         <option value="5">320&#215;240 QVGA</option>
@@ -123,56 +123,57 @@ body{background:#0d0f12;color:#c8d0e0;font-family:'IBM Plex Mono',monospace;font
     </div>
     <div class="crow">
       <span class="clbl">Quality</span>
-      <input class="cslr" type="range" min="4" max="63" value="12"
-        oninput="cSet('quality',this.value);document.getElementById('vQ').textContent=this.value">
+      <input class="cslr" type="range" min="4" max="63" value="12" id="sQ"
+        oninput="document.getElementById('vQ').textContent=this.value">
       <span class="cval" id="vQ">12</span>
     </div>
     <div class="crow">
       <span class="clbl">Brightness</span>
-      <input class="cslr" type="range" min="-2" max="2" value="0"
-        oninput="cSet('brightness',this.value);document.getElementById('vB').textContent=this.value">
+      <input class="cslr" type="range" min="-2" max="2" value="0" id="sB"
+        oninput="document.getElementById('vB').textContent=this.value">
       <span class="cval" id="vB">0</span>
     </div>
     <div class="crow">
       <span class="clbl">Contrast</span>
-      <input class="cslr" type="range" min="-2" max="2" value="0"
-        oninput="cSet('contrast',this.value);document.getElementById('vC').textContent=this.value">
+      <input class="cslr" type="range" min="-2" max="2" value="0" id="sC"
+        oninput="document.getElementById('vC').textContent=this.value">
       <span class="cval" id="vC">0</span>
     </div>
     <div class="crow">
       <span class="clbl">Saturation</span>
-      <input class="cslr" type="range" min="-2" max="2" value="0"
-        oninput="cSet('saturation',this.value);document.getElementById('vS').textContent=this.value">
+      <input class="cslr" type="range" min="-2" max="2" value="0" id="sS"
+        oninput="document.getElementById('vS').textContent=this.value">
       <span class="cval" id="vS">0</span>
     </div>
     <div class="crow">
       <span class="clbl">H-Mirror</span>
       <div class="tog">
-        <button class="tbtn" id="mOn" onclick="cSet('hmirror',1);ton('mOn','mOff')">On</button>
-        <button class="tbtn on" id="mOff" onclick="cSet('hmirror',0);ton('mOff','mOn')">Off</button>
+        <button class="tbtn" id="mOn" onclick="ton('mOn','mOff')">On</button>
+        <button class="tbtn on" id="mOff" onclick="ton('mOff','mOn')">Off</button>
       </div>
     </div>
     <div class="crow">
       <span class="clbl">V-Flip</span>
       <div class="tog">
-        <button class="tbtn" id="fOn" onclick="cSet('vflip',1);ton('fOn','fOff')">On</button>
-        <button class="tbtn on" id="fOff" onclick="cSet('vflip',0);ton('fOff','fOn')">Off</button>
+        <button class="tbtn" id="fOn" onclick="ton('fOn','fOff')">On</button>
+        <button class="tbtn on" id="fOff" onclick="ton('fOff','fOn')">Off</button>
       </div>
     </div>
     <div class="crow">
       <span class="clbl">AWB</span>
       <div class="tog">
-        <button class="tbtn on" id="aOn" onclick="cSet('awb',1);ton('aOn','aOff')">On</button>
-        <button class="tbtn" id="aOff" onclick="cSet('awb',0);ton('aOff','aOn')">Off</button>
+        <button class="tbtn on" id="aOn" onclick="ton('aOn','aOff')">On</button>
+        <button class="tbtn" id="aOff" onclick="ton('aOff','aOn')">Off</button>
       </div>
     </div>
     <div class="crow">
       <span class="clbl">AEC</span>
       <div class="tog">
-        <button class="tbtn on" id="eOn" onclick="cSet('aec',1);ton('eOn','eOff')">On</button>
-        <button class="tbtn" id="eOff" onclick="cSet('aec',0);ton('eOff','eOn')">Off</button>
+        <button class="tbtn on" id="eOn" onclick="ton('eOn','eOff')">On</button>
+        <button class="tbtn" id="eOff" onclick="ton('eOff','eOn')">Off</button>
       </div>
     </div>
+    <button class="sbtn" onclick="cApply()" style="margin-top:6px;background:#00e5ff20;color:#00e5ff;border-color:#00e5ff40">Apply Settings</button>
   </div>
   <div class="pnl">
     <div class="ttl">OTA Update</div>
@@ -362,6 +363,17 @@ async function wConn(){
 }
 
 function cSet(v,val){fetch('/camera/set?var='+v+'&val='+val);}
+function cApply(){
+  cSet('framesize',document.getElementById('sFS').value);
+  cSet('quality',document.getElementById('sQ').value);
+  cSet('brightness',document.getElementById('sB').value);
+  cSet('contrast',document.getElementById('sC').value);
+  cSet('saturation',document.getElementById('sS').value);
+  cSet('hmirror',document.getElementById('mOn').classList.contains('on')?1:0);
+  cSet('vflip',document.getElementById('fOn').classList.contains('on')?1:0);
+  cSet('awb',document.getElementById('aOn').classList.contains('on')?1:0);
+  cSet('aec',document.getElementById('eOn').classList.contains('on')?1:0);
+}
 function ton(on,off){
   document.getElementById(on).classList.add('on');
   document.getElementById(off).classList.remove('on');
