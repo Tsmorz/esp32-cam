@@ -31,6 +31,16 @@ static bool sta_try(const char *ssid, const char *pass) {
   return true;
 }
 
+// Remembered across reboots and across firmware builds
+static void save_network(const char *ssid, const char *pass) {
+  Preferences prefs;
+  prefs.begin(settings::WIFI, false);
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", pass);
+  prefs.end();
+  _saved_ssid = ssid;
+}
+
 void wifi_start() {
   WiFi.persistent(false); // the dashboard's choice lives in Preferences
   WiFi.setHostname(HOSTNAME);
@@ -46,8 +56,23 @@ void wifi_start() {
   String pass = prefs.getString("pass", "");
   prefs.end();
   _saved_ssid = ssid;
-  if (!sta_try(ssid.c_str(), pass.c_str()) &&
-      !(ssid != WIFI_SSID && sta_try(WIFI_SSID, WIFI_PASS)))
+  // The network in secrets.h is kept in flash too, so a later build without
+  // secrets.h (CI, releases) still knows it: stored when nothing is saved yet,
+  // and again if it is the one that worked while the saved one did not
+  if (WIFI_SSID[0] && !ssid.length()) {
+    save_network(WIFI_SSID, WIFI_PASS);
+    Serial.println("[sta] network from secrets.h saved to flash");
+    ssid = WIFI_SSID;
+    pass = WIFI_PASS;
+  }
+  bool up = sta_try(ssid.c_str(), pass.c_str());
+  if (!up && WIFI_SSID[0] && ssid != WIFI_SSID &&
+      sta_try(WIFI_SSID, WIFI_PASS)) {
+    up = true;
+    save_network(WIFI_SSID, WIFI_PASS);
+    Serial.println("[sta] network from secrets.h saved to flash");
+  }
+  if (!up)
     Serial.println("[sta] not connected — AP only");
 
   // http://<HOSTNAME>.local on the router's network; the IP-stack hooks
@@ -88,13 +113,7 @@ void wifi_tick() {
 }
 
 void wifi_save_and_connect(const char *ssid, const char *pass) {
-  // Remembered across reboots; wifi_start() tries it before secrets.h
-  Preferences prefs;
-  prefs.begin(settings::WIFI, false);
-  prefs.putString("ssid", ssid);
-  prefs.putString("pass", pass);
-  prefs.end();
-  _saved_ssid = ssid;
+  save_network(ssid, pass); // wifi_start() tries it before secrets.h
 
   WiFi.disconnect();
   WiFi.begin(ssid, pass);

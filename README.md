@@ -18,7 +18,7 @@ The camera sensor is auto-detected. This unit uses a **DC5640-AF (OV5640, voice-
    ```
    After that, update over WiFi from the dashboard's **System** page (or `curl`, below). Keep the board still for ~1 s after boot if an IMU is attached (gyro calibration).
 
-3. Join **GripLink-Cam** (password `esp32cam1`, override with `AP_PASS` in `secrets.h`) and open `http://192.168.4.1`, or the STA IP printed to serial. The dashboard asks for the API token the first time you change something. **On a board with no token** (a release binary, or no `secrets.h`) it asks you to *choose* one instead; it is stored in flash and the first visitor wins, so do it right after flashing. Then use **Network** to join your WiFi. Forget a claimed token with `POST /settings/reset?scope=token`, or `T` on the serial monitor.
+3. Join **GripLink-Cam** (password `esp32cam1`, override with `AP_PASS` in `secrets.h`) and open `http://192.168.4.1`, or the STA IP printed to serial. The dashboard asks for the API token the first time you change something. **On a board with no token** (a release binary, or no `secrets.h`) it asks you to *choose* one instead; it is stored in flash and the first visitor wins, so do it right after flashing. Then use **Network** to join your WiFi. The token and network from `secrets.h` are also saved in flash on boot, so updating later with a release binary keeps both. Forget a claimed token with `POST /settings/reset?scope=token`, or `T` on the serial monitor.
 
 ## Dashboard
 

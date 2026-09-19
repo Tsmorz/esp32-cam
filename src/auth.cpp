@@ -14,12 +14,20 @@ static std::atomic<bool> _set{false};
 bool auth_from_secrets() { return API_TOKEN[0] != '\0'; }
 
 void auth_init() {
-  if (auth_from_secrets())
-    return;
   Preferences prefs;
-  if (!prefs.begin(settings::SYS, true))
+  if (!prefs.begin(settings::SYS, auth_from_secrets() ? false : true))
     return;
   String t = prefs.getString(settings::TOKEN_KEY, "");
+  if (auth_from_secrets()) {
+    // Keep the compiled-in token in flash as well, so a later build without
+    // secrets.h (CI, releases) still accepts it instead of starting unclaimed
+    if (strcmp(t.c_str(), API_TOKEN)) {
+      prefs.putString(settings::TOKEN_KEY, API_TOKEN);
+      Serial.println("[auth] token from secrets.h saved to flash");
+    }
+    prefs.end();
+    return;
+  }
   prefs.end();
   if (token_valid(t.c_str())) {
     strcpy(_claimed, t.c_str());
