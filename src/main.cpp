@@ -1,3 +1,4 @@
+#include "auth.h"
 #include "board.h"
 #include "calibration_store.h"
 #include "camera.h"
@@ -39,6 +40,7 @@ void setup() {
   Serial.setDebugOutput(true);
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
   settings_init();
+  auth_init();
   led_start(APP_CORE, PRIO_LED); // fast blink until ready
 
   board_init(); // I²C bus, camera power
@@ -55,6 +57,12 @@ void setup() {
     Serial.println("[boot] no camera — dashboard, IMU and OTA still run");
   }
 
+  Serial.printf("[boot] WIFI_SSID %s; API token: %s\n",
+                WIFI_SSID[0] ? "compiled in"
+                             : "none (join one in the dashboard)",
+                auth_from_secrets() ? "compiled in"
+                : auth_configured() ? "claimed"
+                                    : "NOT SET — claim it in the dashboard");
   led_set(LED_WIFI);
   wifi_start();
   http_start();
@@ -65,7 +73,7 @@ void setup() {
   if (cam_ok)
     detector_start(APP_CORE, PRIO_DETECT, DETECT_PERIOD_MS);
   led_set(cam_ok ? LED_IDLE : LED_ERROR);
-  Serial.println("[ready]  ?=stats  t=toggle-detector");
+  Serial.println("[ready]  ?=stats  t=toggle-detector  T=forget-token");
 }
 
 void loop() {
@@ -77,6 +85,12 @@ void loop() {
       print_stats();
     if (c == 't')
       detector_toggle();
+    if (c == 'T') { // physical access: forget a claimed token
+      auth_forget();
+      Serial.println("[auth] token forgotten, restarting");
+      delay(200);
+      ESP.restart();
+    }
   }
   static uint32_t last_ms = 0;
   if (millis() - last_ms >= 250) { // housekeeping that isn't worth a task

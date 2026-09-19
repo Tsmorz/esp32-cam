@@ -10,7 +10,7 @@ The camera sensor is auto-detected. This unit uses a **DC5640-AF (OV5640, voice-
    ```bash
    cp src/secrets.example.h src/secrets.h
    ```
-   Fill in `WIFI_SSID`, `WIFI_PASS` and an `API_TOKEN` (`openssl rand -hex 12`). Without `secrets.h` the firmware still builds: hotspot only, with settings/OTA/WiFi changes disabled.
+   Fill in `WIFI_SSID`, `WIFI_PASS` and an `API_TOKEN` (`openssl rand -hex 12`). Without `secrets.h` the firmware still builds (this is what CI and the release binaries are): hotspot only, and the board has **no token** until you claim one — see below.
 
 2. Flash and monitor:
    ```bash
@@ -18,7 +18,7 @@ The camera sensor is auto-detected. This unit uses a **DC5640-AF (OV5640, voice-
    ```
    After that, update over WiFi from the dashboard's **System** page (or `curl`, below). Keep the board still for ~1 s after boot if an IMU is attached (gyro calibration).
 
-3. Join **GripLink-Cam** (password `esp32cam1`, override with `AP_PASS` in `secrets.h`) and open `http://192.168.4.1`, or the STA IP printed to serial. The dashboard asks for the API token the first time you change something.
+3. Join **GripLink-Cam** (password `esp32cam1`, override with `AP_PASS` in `secrets.h`) and open `http://192.168.4.1`, or the STA IP printed to serial. The dashboard asks for the API token the first time you change something. **On a board with no token** (a release binary, or no `secrets.h`) it asks you to *choose* one instead; it is stored in flash and the first visitor wins, so do it right after flashing. Then use **Network** to join your WiFi. Forget a claimed token with `POST /settings/reset?scope=token`, or `T` on the serial monitor.
 
 ## Dashboard
 
@@ -57,6 +57,8 @@ Control server, port **80**:
 | Path | Description |
 |------|-------------|
 | `GET /` | Dashboard |
+| `POST /auth/claim` | While the board has no token (release builds), sets it: body = the token (8–64 printable characters), header `X-Claim: 1`; 400 once one is set |
+| `GET /auth` 🔒 | `OK` if the token is right — the dashboard calls it before an upload |
 | `GET /status` | Firmware version, uptime, sensor, AF state, IMU, detector state/timing, calibration, WiFi |
 | `GET /detections` | `{"seq","t_us","now_us","age_ms","w","h","tag_m","imu_q","cam":{"calibrated","fx","fy","cx","cy","dist":[k1,k2,p1,p2,k3]},"decode_ms","detect_ms","count","tags":[{"id","corners","pose":{"tx","ty","tz","q":[w,x,y,z]}}]}` — corners as seen in the frame, in `w`×`h` pixels; `cam` = the intrinsics used, in the same pixels; `seq` = processed-frame counter (the dashboard derives the detection rate from it); `t_us` = when the camera captured the frame and `now_us` = the device clock at this reply (both µs since boot, so `now_us − t_us` is the true latency without any clock sync); `imu_q` = the IMU orientation at `t_us`, or `null` (no IMU / still calibrating); pose frames below |
 | `GET /pose` | `{"q":[w,x,y,z],"imu":"none\|calibrating\|ok","n","err"}` |
@@ -80,7 +82,7 @@ Stream server, port **81**: `GET /stream` — MJPEG, one viewer at a time.
 
 ### Pushed detections (UDP)
 
-For a robot, polling `/detections` is the wrong shape. Send `sub <API_TOKEN>` to the board's UDP port **5005** to subscribe (repeat at least every 10 s to stay subscribed; `bye <API_TOKEN>` unsubscribes, up to 4 subscribers). Datagrams without the token are ignored, and with no `API_TOKEN` set nothing can subscribe — so a forged source address can't aim the stream at someone else. Every processed frame then arrives at your address as one JSON datagram — the `/detections` fields without `cam`, `corners` and timings, so 8 tags fit in one packet:
+For a robot, polling `/detections` is the wrong shape. Send `sub <API_TOKEN>` to the board's UDP port **5005** to subscribe (repeat at least every 10 s to stay subscribed; `bye <API_TOKEN>` unsubscribes, up to 4 subscribers). Datagrams without the token are ignored, and until a token is set nothing can subscribe — so a forged source address can't aim the stream at someone else. Every processed frame then arrives at your address as one JSON datagram — the `/detections` fields without `cam`, `corners` and timings, so 8 tags fit in one packet:
 
 ```python
 import socket, json
@@ -196,6 +198,8 @@ The OV5640's focus motor is run by an MCU inside the sensor whose firmware is up
 src/
   config.h            Ports, task layout, pins; includes secrets.h
   secrets.example.h   Template for the git-ignored secrets.h
+  auth.h/cpp          The API token: compiled in, or claimed at runtime and kept in flash
+  token_rules.h       What a valid token looks like (host-tested)
   calibration.h       Compiled-in default calibration (the board's stored one wins)
   calibration_store.h/cpp  The calibration in use, persisted in flash
   calibration_json.h  Calibration ⇄ JSON (host-tested)
@@ -235,6 +239,7 @@ lib/
 
 | Command | What it does | CI job |
 |---------|--------------|--------|
+| `task init` | First-time setup: check tools, create `src/secrets.h`, fetch toolchains and libraries | — |
 | `task format` | clang-format everything | — |
 | `task format-check` | Fail on unformatted sources | Format |
 | `task check` | cppcheck; fails on high/medium findings | Static analysis |
@@ -270,7 +275,7 @@ Tags with a hyphen (`v1.1.0-rc1`) become pre-releases. The firmware reports its 
 - **No tags detected** — check the tag is AprilTag **36h11** (print one from the dashboard), not mirrored in the feed (see Mirror), in focus, and at least ~5 % of the frame wide. The Live page's *Detector view* shows exactly what the detector sees
 - **Green/black dotted columns in the video** — an OV5640 JPEG artifact (fixed columns, one dot every 8 rows). Not caused by load or the camera clock; higher JPEG quality numbers reduce it (≈50 % fewer at 20)
 - **Black screen / camera init error** — power-cycle after flashing; AXP313A needs a hard reset on first boot. The LED double-blinks; dashboard, IMU and OTA keep working
-- **Dashboard says "Wrong token"** — the stored token was cleared; enter `API_TOKEN` from `secrets.h` (System → Access)
+- **Dashboard says "Wrong token"** — the stored token was cleared; enter the token again (System → Access) — `API_TOKEN` from `secrets.h`, or the one you chose on a release build
 - **Stuck on a wrong dashboard-chosen network** — it falls back to `secrets.h` after 10 s; `task factory` erases all saved settings
 - **PSRAM error** — `board_build.arduino.memory_type = qio_opi` must not be changed; N16R8 uses OPI PSRAM
 - **No COM port** — hold BOOT, tap RST, release BOOT, then flash

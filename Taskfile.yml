@@ -5,6 +5,31 @@ vars:
   SOURCES: src/*.cpp src/*.h lib/*/*.h lib/*/*.hpp test/*/*.cpp
 
 tasks:
+  init:
+    desc: "First-time setup: check tools, create src/secrets.h, fetch toolchains and libraries"
+    cmds:
+      - |
+        missing=0
+        for tool in pio clang-format; do
+          command -v $tool >/dev/null || { echo "MISSING: $tool"; missing=1; }
+        done
+        if [ $missing = 1 ]; then
+          echo "Install with: pip install platformio==6.1.19 clang-format==21.1.8  (or brew install clang-format)"
+          exit 1
+        fi
+        clang-format --version | grep -q 'version 21\.' || \
+          echo "WARNING: CI uses clang-format 21.x, you have: $(clang-format --version)"
+      - |
+        if [ -f src/secrets.h ]; then
+          echo "src/secrets.h exists"
+        else
+          cp src/secrets.example.h src/secrets.h
+          echo "Created src/secrets.h — edit WIFI_SSID, WIFI_PASS and API_TOKEN"
+        fi
+      - pio pkg install -e {{.ENV}}
+      - pio pkg install -e native
+      - echo "Ready. Next{{":"}} task ci"
+
   build:
     desc: "Compile firmware"
     cmds:

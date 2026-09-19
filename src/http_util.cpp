@@ -1,4 +1,5 @@
 #include "http_util.h"
+#include "auth.h"
 #include "config.h"
 #include <cstdio>
 #include <cstring>
@@ -7,13 +8,14 @@
 // answered, so other websites can't fire these routes from a visitor's browser.
 bool authorized(httpd_req_t *req) {
   char tok[65] = {};
-  if (API_TOKEN[0] &&
+  if (auth_configured() &&
       httpd_req_get_hdr_value_str(req, "X-Token", tok, sizeof(tok)) == ESP_OK &&
-      strcmp(tok, API_TOKEN) == 0)
+      strcmp(tok, auth_token()) == 0)
     return true;
   httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED,
-                      API_TOKEN[0] ? "Missing or wrong X-Token"
-                                   : "API_TOKEN not set in secrets.h");
+                      auth_configured()
+                          ? "Missing or wrong X-Token"
+                          : "No API token yet — claim one in the dashboard");
   return false;
 }
 

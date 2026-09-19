@@ -1,4 +1,5 @@
 #include "push.h"
+#include "auth.h"
 #include "config.h"
 #include "detections_json.h"
 #include "detector.h"
@@ -51,7 +52,7 @@ static void push_task(void *) {
     const int n = recvfrom(_sock, msg, sizeof(msg) - 1, 0, (sockaddr *)&from,
                            &len); // times out every 500 ms
     if (n >= 0) {
-      const PushCmd cmd = push_parse(msg, n, API_TOKEN);
+      const PushCmd cmd = push_parse(msg, n, auth_token());
       if (cmd != PushCmd::None)
         subscribe(from, cmd == PushCmd::Sub);
     }
@@ -84,9 +85,8 @@ void push_start(BaseType_t core, UBaseType_t prio) {
   }
   xTaskCreatePinnedToCore(push_task, "push", 3072, nullptr, prio, nullptr,
                           core);
-  Serial.printf("[push] UDP :%d — send \"sub <API_TOKEN>\" to subscribe%s\n",
-                PUSH_PORT,
-                API_TOKEN[0] ? "" : " (disabled: API_TOKEN not set)");
+  Serial.printf("[push] UDP :%d — send \"sub <token>\" to subscribe%s\n",
+                PUSH_PORT, auth_configured() ? "" : " (once a token is set)");
 }
 
 int push_subscribers() {

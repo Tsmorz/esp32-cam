@@ -52,13 +52,14 @@ Multi-file Arduino firmware for the **DFRobot FireBeetle 2 ESP32-S3 V1.0** (N16R
 - `src/focus.h/cpp` — OV5640 AF: firmware upload + mode control. `focus_set_mode()` only queues; `focus_tick()` (from `loop()`) runs the MCU command sequence, so the httpd task never waits for the lens
 - `src/detector.h/cpp` — AprilTag task (JPEG decode → detect → pose), thread-safe result frame, `detector_gray_bmp()`, `detector_tag_svg()`
 - `src/calibration_store.h/cpp` — **the camera calibration in use**: stored in NVS (`settings::CALIB`), set over HTTP (`POST /calibration`, `scripts/push_calibration.py`), thread-safe copy via `calibration_get()`. Falls back to `src/calibration.h` (compiled-in default: `CALIB_*`, `CALIB_FX 0` = none), then to the estimate. `calibration_json.h` parses/validates the body (host-tested). Calibration does *not* record Mirror/Flip
+- `src/auth.h/cpp` — the API token: `API_TOKEN` from secrets.h if set, else one **claimed at runtime** (`POST /auth/claim`, first visitor wins, kept in NVS `sys/token`; CI/release binaries have no secrets.h so start unclaimed). Use `auth_token()`/`auth_configured()`, never `API_TOKEN` directly. `token_rules.h` (host-tested) says what is valid. Serial `T` forgets a claimed token
 - `src/settings.h/cpp` — the one place naming the NVS namespaces (`cam`, `det`, `wifi`, `calib`, `sys`), the schema version + migration hook, `settings_reset(scope)`. New persisted data goes through it
 - `src/detection_types.h`, `detections_json.h`, `orientation_history.h`, `strbuf.h` — header-only, no Arduino, host-tested. `DetectionFrame.t_us` = capture time (`fb->timestamp`, esp_timer µs; falls back to grab time if implausible — unverified on hardware), `imu_q` = IMU orientation at `t_us` from `imu_quat_at()` (256-sample history, ~2.4 s)
 - `src/push.h/cpp` — UDP push: `sub <API_TOKEN>` to :5005 subscribes, `bye <API_TOKEN>` leaves (10 s TTL, 4 max; parsing in host-tested `push_message.h`; disabled if `API_TOKEN` is empty); the detector task sends the compact `detections_json` to each subscriber
 - `src/board.h/cpp` (I²C + AXP313A), `wifi_mgr.h/cpp` (AP+STA, saved network, mDNS `HOSTNAME.local` = `esp32cam.local`, async scan), `http_server.h/cpp` (both servers + every route), `http_util.h/cpp` (`authorized`, `read_body`, `send_json`), `ota_health.h/cpp`, `system.h/cpp` (`system_restart_in(ms)` — reply first, restart from `loop()`; never `delay()` in a handler)
 - `src/camera_model.h` — header-only, no Arduino: `Calibration` → `CameraModel` for any w×h (`camera_model()`), `undistort_point()`
 - `src/tag_pose.h` — header-only, no Arduino: `configure_detector()` (1-bit table), `detector_self_test()`, `undistort_detection()`, `mat_to_quat()`, `tag_pose()`. Firmware and unit tests share it — keep Arduino out of it
-- `test/test_camera_model`, `test/test_tag_pose`, `test/test_push_message` — Unity tests, `[env:native]`; synthetic tags rendered with `apriltag_to_image()`
+- `test/test_camera_model`, `test/test_tag_pose`, `test/test_push_message`, `test/test_token_rules` — Unity tests, `[env:native]`; synthetic tags rendered with `apriltag_to_image()`
 - `src/imu.h/cpp` — LSM6DSOX driver, gyro bias calibration, VQF sampling task, `imu_state()`
 - `src/led.h/cpp` — status LED task
 - `src/main.cpp` — `setup()`, `loop()` (serial CLI, `camera_profile_update()`, `ota_health_tick()`)
@@ -85,7 +86,7 @@ Multi-file Arduino firmware for the **DFRobot FireBeetle 2 ESP32-S3 V1.0** (N16R
 - `/` — gzipped dashboard. Four hash-routed pages (live/camera/network/system). Polls `/status` 2 s; on Live also `/detections` 200 ms and `/pose` 100 ms (only if IMU present). Stream `<img>` only while Live is shown. Token prompt via `<dialog>`, stored in `localStorage`, sent as `X-Token`
 - `/status` — everything the header/System page show (sensor, AF, IMU, detector timing, WiFi, `temp_c` chip temperature, `stream_port`)
 - `/calibration` (GET; 🔒 POST/DELETE), 🔒 `/settings/reset?scope=`, `/detections`, `/pose`, `/camera/status`, `/snapshot`, `/debug/gray.bmp`, `/tag?id=N` (printable tag page), `/wifi/scan`, `/stream` (302 → :81)
-- 🔒 `/camera/set`, `/detector/set` (`enabled`, `res`; this and `/camera/set` are POST), `/wifi/connect`, `/ota`, `/camera/reset`, `/system/reboot`
+- 🔒 `/auth` (token check, GET; unauthenticated `POST /auth/claim` only while no token is set), `/camera/set`, `/detector/set` (`enabled`, `res`; this and `/camera/set` are POST), `/wifi/connect`, `/ota`, `/camera/reset`, `/system/reboot`
 
 🔒 = requires `X-Token: API_TOKEN` (401 otherwise; disabled if `API_TOKEN` is empty). State changes are POST/DELETE only, and **no route sends CORS headers**, so other origins can't read responses; the custom header on 🔒 routes forces a preflight that is never answered.
 

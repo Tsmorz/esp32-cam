@@ -491,8 +491,8 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 
 <dialog id="tokDlg">
   <form method="dialog">
-    <h3>API token</h3>
-    <p>Enter the <code>API_TOKEN</code> from <code>src/secrets.h</code>. It's saved in this browser only.</p>
+    <h3 id="tokTitle">API token</h3>
+    <p id="tokHelp">Enter the token. It's saved in this browser only.</p>
     <input type="password" id="tokInput" autocomplete="off" placeholder="Token" required>
     <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
   </form>
@@ -522,14 +522,33 @@ const store = {
   set(v) { try { localStorage.setItem(TOK_KEY, v); } catch (_) {} renderTok(); },
   clear() { try { localStorage.removeItem(TOK_KEY); } catch (_) {} renderTok(); },
 };
-function askToken() {
+// A board with no token yet (a release build) lets the first visitor choose one
+async function boardHasToken() {
+  try { return (await getJSON('/status')).auth !== false; } catch (_) { return true; }
+}
+async function claimToken(tok) {
+  const r = await fetch('/auth/claim', {method: 'POST', headers: {'X-Claim': '1'}, body: tok});
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+}
+async function askToken() {
+  const claiming = !(await boardHasToken());
+  $('#tokTitle').textContent = claiming ? 'Choose an API token' : 'API token';
+  $('#tokHelp').textContent = claiming
+    ? 'This board has no token yet. Choose one (8–64 characters, no spaces): it protects settings, WiFi and firmware updates, and is stored on the board. The first person to set it wins, so do this right after flashing.'
+    : "Enter the token — the API_TOKEN from src/secrets.h, or the one you chose. It's saved in this browser only.";
   return new Promise(resolve => {
     const d = $('#tokDlg'), inp = $('#tokInput');
     inp.value = '';
     d.returnValue = '';
-    d.onclose = () => {
-      if (d.returnValue === 'ok' && inp.value) { store.set(inp.value.trim()); resolve(true); }
-      else resolve(false);
+    d.onclose = async () => {
+      if (d.returnValue !== 'ok' || !inp.value) return resolve(false);
+      const tok = inp.value.trim();
+      if (claiming) {
+        try { await claimToken(tok); } catch (e) { toast(e.message, 'bad'); return resolve(false); }
+        toast('Token set on the board');
+      }
+      store.set(tok);
+      resolve(true);
     };
     d.showModal();
     inp.focus();
@@ -984,7 +1003,9 @@ drop.ondrop = e => { e.preventDefault(); drop.classList.remove('drag'); upload(e
 otaFile.onchange = () => upload(otaFile.files[0]);
 async function upload(file) {
   if (!file || !file.name.endsWith('.bin')) { toast('Choose a .bin firmware file', 'bad'); return; }
-  if (!store.get() && !(await askToken())) return;
+  // Check the token first: a board that rejects an upload just drops the
+  // connection, which the browser reports as a network error, not a 401
+  try { await authed('/auth'); } catch (e) { toast(e.message, 'bad'); return; }
   const prog = $('#otaProg'), bar = $('#otaBar'), pct = $('#otaPct'), txt = $('#otaText');
   prog.hidden = false; txt.textContent = 'Uploading ' + file.name; bar.style.width = '0'; pct.textContent = '0%';
   const x = new XMLHttpRequest();
@@ -996,7 +1017,7 @@ async function upload(file) {
     if (x.status === 200) { txt.textContent = 'Installed — restarting…'; bar.style.width = '100%'; setTimeout(() => location.reload(), 10000); }
     else { if (x.status === 401) store.clear(); txt.textContent = 'Failed: ' + (x.responseText || x.status); }
   };
-  x.onerror = () => { store.clear(); txt.textContent = 'Upload failed — check the token and try again'; };
+  x.onerror = () => { txt.textContent = 'Upload interrupted — the connection dropped. Check the board is reachable and try again'; };
   x.send(file);
 }
 

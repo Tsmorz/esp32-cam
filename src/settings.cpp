@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "auth.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <cstring>
@@ -45,6 +46,10 @@ bool settings_reset(const char *scope) {
   }
   if (all || !strcmp(scope, "detector")) {
     clear_ns(settings::DETECT);
+    known = true;
+  }
+  if (all || !strcmp(scope, "token")) {
+    auth_forget();
     known = true;
   }
   if (all || !strcmp(scope, "wifi")) {

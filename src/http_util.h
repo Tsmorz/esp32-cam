@@ -2,7 +2,8 @@
 #include <esp_http_server.h>
 #include <stddef.h>
 
-// State-changing routes require X-Token == API_TOKEN; sends the 401 itself
+// State-changing routes require X-Token == the API token (auth.h); sends the
+// 401 itself
 bool authorized(httpd_req_t *req);
 // Value of a flat "key":"string" pair; false if absent
 bool json_str(const char *json, const char *key, char *out, size_t outlen);

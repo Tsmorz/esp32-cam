@@ -1,4 +1,5 @@
 #include "http_server.h"
+#include "auth.h"
 #include "calibration_json.h"
 #include "calibration_store.h"
 #include "camera.h"
@@ -17,6 +18,7 @@
 #include "settings.h"
 #include "strbuf.h"
 #include "system.h"
+#include "token_rules.h"
 #include "wifi_mgr.h"
 #include <Arduino.h>
 #include <WiFi.h>
@@ -173,8 +175,9 @@ static esp_err_t status_handler(httpd_req_t *req) {
           (unsigned long)(millis() / 1000), FW_VERSION, __DATE__, __TIME__,
           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
           (unsigned)ESP.getPsramSize(), temperatureRead(), STREAM_PORT,
-          API_TOKEN[0] ? "true" : "false", camera_sensor_name(), focus_state(),
-          HOSTNAME, settings_schema(), ota_health_pending() ? "true" : "false");
+          auth_configured() ? "true" : "false", camera_sensor_name(),
+          focus_state(), HOSTNAME, settings_schema(),
+          ota_health_pending() ? "true" : "false");
   appendf(buf, sizeof(buf), pos,
           "\"imu\":{\"state\":\"%s\",\"samples\":%lu,\"errors\":%lu},", imu,
           (unsigned long)imu_n, (unsigned long)imu_err);
@@ -213,6 +216,41 @@ static esp_err_t camera_status_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+// ── /auth — is the token right? Lets the dashboard find out before it sends a
+// firmware image: a rejected upload comes back to the browser as a dropped
+// connection, not as the 401.
+static esp_err_t auth_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+// ── /auth/claim — set the token while none is set. The custom header makes a
+// cross-site page need a preflight, which is never answered.
+static esp_err_t auth_claim_handler(httpd_req_t *req) {
+  char tok[TOKEN_MAX + 2];
+  char hdr[4];
+  if (httpd_req_get_hdr_value_str(req, "X-Claim", hdr, sizeof(hdr)) != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing X-Claim header");
+    return ESP_FAIL;
+  }
+  if (!read_body(req, tok, sizeof(tok)))
+    return ESP_FAIL;
+  switch (auth_claim(tok)) {
+  case ClaimResult::Ok:
+    httpd_resp_sendstr(req, "OK");
+    return ESP_OK;
+  case ClaimResult::AlreadySet:
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "A token is already set");
+    return ESP_FAIL;
+  default:
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Token must be 8-64 printable characters, no spaces");
+    return ESP_FAIL;
+  }
+}
+
 // ── /system/reboot, /camera/reset
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t reboot_handler(httpd_req_t *req) {
@@ -242,7 +280,7 @@ static esp_err_t settings_reset_handler(httpd_req_t *req) {
       httpd_query_key_value(qs, "scope", scope, sizeof(scope)) != ESP_OK ||
       !settings_reset(scope)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "scope = all|camera|detector|wifi|calibration");
+                        "scope = all|camera|detector|wifi|calibration|token");
     return ESP_FAIL;
   }
   httpd_resp_sendstr(req, "OK");
@@ -493,6 +531,8 @@ void http_start() {
       {"/calibration", HTTP_DELETE, calibration_delete_handler, nullptr},
       {"/detector/set", HTTP_POST, detector_set_handler, nullptr},
       {"/status", HTTP_GET, status_handler, nullptr},
+      {"/auth", HTTP_GET, auth_handler, nullptr},
+      {"/auth/claim", HTTP_POST, auth_claim_handler, nullptr},
       {"/camera/status", HTTP_GET, camera_status_handler, nullptr},
       {"/camera/reset", HTTP_POST, camera_reset_handler, nullptr},
       {"/settings/reset", HTTP_POST, settings_reset_handler, nullptr},

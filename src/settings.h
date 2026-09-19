@@ -5,7 +5,8 @@
 // the layout, and resets them.
 
 namespace settings {
-static constexpr const char *SYS = "sys";     // schema version
+static constexpr const char *SYS = "sys";         // schema version, API token
+static constexpr const char *TOKEN_KEY = "token"; // in SYS: a claimed token
 static constexpr const char *CAMERA = "cam";  // sensor settings + stream size
 static constexpr const char *DETECT = "det";  // detection size
 static constexpr const char *WIFI = "wifi";   // network picked in the dashboard
@@ -18,4 +19,5 @@ static constexpr int SETTINGS_SCHEMA = 1;
 
 void settings_init();  // first thing in setup(): migrate old layouts
 int settings_schema(); // what is stored (0 = fresh flash)
-bool settings_reset(const char *scope); // camera|detector|wifi|calibration|all
+bool settings_reset(
+    const char *scope); // camera|detector|wifi|calibration|token|all
