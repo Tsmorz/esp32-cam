@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>GripLink Camera</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234da3ff'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d11;--surface:#12151b;--surface-2:#181c24;--raised:#1f2430;
+  --border:#252b37;--border-strong:#323a4a;
+  --text:#e7eaf0;--muted:#8a93a5;--faint:#5b6475;
+  --accent:#4da3ff;--accent-soft:rgba(77,163,255,.14);--on-accent:#fff;
+  --ok:#34d399;--ok-soft:rgba(52,211,153,.14);
+  --warn:#fbbf24;--warn-soft:rgba(251,191,36,.14);
+  --bad:#f87171;--bad-soft:rgba(248,113,113,.14);
+  --tag:#22d3ee;
+  --radius:14px;--radius-sm:9px;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#f4f6f9;--surface:#fff;--surface-2:#f7f8fb;--raised:#eef1f5;
+  --border:#e3e7ee;--border-strong:#cfd5df;
+  --text:#111827;--muted:#5f6b7d;--faint:#98a2b3;
+  --accent:#2563eb;--accent-soft:rgba(37,99,235,.1);
+  --ok:#059669;--ok-soft:rgba(5,150,105,.1);
+  --warn:#b45309;--warn-soft:rgba(180,83,9,.1);
+  --bad:#dc2626;--bad-soft:rgba(220,38,38,.1);
+  --tag:#0891b2;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 6px 16px rgba(16,24,40,.06);
+}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+/* ── Header ─────────────────────────────────────────── */
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);
+  backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);
+  border-bottom:1px solid var(--border)}
+.bar{max-width:1320px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:10px 20px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
+.brand .mark{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--accent),var(--tag));color:#fff}
+.brand small{display:block;font-weight:500;font-size:11.5px;color:var(--muted);margin-top:-2px}
+nav.tabs{display:flex;gap:4px;margin:0 auto;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+nav.tabs a{display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:9px;color:var(--muted);
+  text-decoration:none;font-weight:550;font-size:13.5px;transition:background .15s,color .15s}
+nav.tabs a:hover{color:var(--text)}
+nav.tabs a[aria-current=page]{background:var(--raised);color:var(--text);box-shadow:var(--shadow)}
+.chips{display:flex;gap:8px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--border);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.chip b{color:var(--text);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
+.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+
+/* ── Layout ─────────────────────────────────────────── */
+main{max-width:1320px;margin:0 auto;padding:20px 20px 40px}
+.page{display:none}
+.page.on{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 16px}
+.page-head h1{font-size:20px;margin:0;letter-spacing:-.015em}
+.page-head p{margin:2px 0 0;color:var(--muted)}
+.live{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.stack{display:grid;gap:16px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;gap:10px;padding:14px 16px 0}
+.card-h h2{font-size:13.5px;font-weight:650;margin:0;letter-spacing:.005em}
+.card-h .sub{margin-left:auto;font-size:12px;color:var(--muted)}
+.card-b{padding:12px 16px 16px}
+.card-b.flush{padding:8px 0 8px}
+.ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+
+/* ── Controls ───────────────────────────────────────── */
+.row{display:flex;align-items:center;gap:12px;min-height:44px;padding:6px 0}
+.row+.row{border-top:1px solid var(--border)}
+.row label,.row .lbl{flex:1;min-width:0}
+.row .lbl small,.row label small{display:block;color:var(--muted);font-size:12px}
+.val{min-width:28px;text-align:right;color:var(--muted);font-family:var(--mono);font-size:12.5px}
+input[type=number]{width:76px}
+select,input[type=text],input[type=password],input[type=number]{height:36px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);
+  background:var(--surface-2);padding:0 10px;outline:none;min-width:0}
+select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+input[type=range]{width:170px;accent-color:var(--accent)}
+.sw{position:relative;display:inline-block;vertical-align:middle;width:40px;height:24px;flex:none}
+.sw input{appearance:none;-webkit-appearance:none;margin:0;width:40px;height:24px;border-radius:99px;background:var(--border-strong);cursor:pointer;transition:background .15s;outline:none}
+.sw input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .15s}
+.sw input:checked{background:var(--accent)}
+.sw input:checked::after{transform:translateX(16px)}
+.sw input:focus-visible{box-shadow:0 0 0 3px var(--accent-soft)}
+.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:7px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:550}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--text);box-shadow:var(--shadow)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:var(--radius-sm);
+  border:1px solid var(--border-strong);background:var(--surface-2);cursor:pointer;font-weight:550;font-size:13.5px;white-space:nowrap}
+.btn:hover{background:var(--raised)}
+.btn.primary{background:var(--accent);border-color:transparent;color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+.btn.danger:hover{background:var(--bad-soft)}
+.btn.ghost{background:none;border-color:transparent}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px}
+a.btn{color:var(--text);text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:12.5px;color:var(--muted);margin:10px 0 0;display:flex;gap:8px}
+.hint svg{color:var(--faint);margin-top:1px}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:99px;font-size:11.5px;font-weight:600;
+  background:var(--raised);color:var(--muted)}
+.badge.ok{background:var(--ok-soft);color:var(--ok)}
+.badge.warn{background:var(--warn-soft);color:var(--warn)}
+.badge.bad{background:var(--bad-soft);color:var(--bad)}
+.badge.acc{background:var(--accent-soft);color:var(--accent)}
+
+/* ── Video ──────────────────────────────────────────── */
+.video{position:relative;aspect-ratio:4/3;background:#07080a;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)}
+.video img,.video canvas{position:absolute;inset:0;width:100%;height:100%}
+.video img{object-fit:contain}
+.video img.gray{image-rendering:pixelated}
+.vbar{position:absolute;left:12px;right:12px;display:flex;align-items:center;gap:8px;pointer-events:none}
+.vbar.top{top:12px}.vbar.bottom{bottom:12px}
+.vbar>*{pointer-events:auto}
+.pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:99px;font-size:12.5px;font-weight:550;
+  background:rgba(10,12,16,.62);color:#e7eaf0;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.pill.btn{cursor:pointer}
+.pill.btn:hover{background:rgba(10,12,16,.8)}
+.pill[aria-pressed=true]{background:rgba(77,163,255,.85);border-color:transparent}
+.spacer{flex:1}
+.empty{display:grid;place-items:center;align-content:center;text-align:center;gap:6px;padding:22px 16px;color:var(--muted)}
+.empty svg{width:28px;height:28px;color:var(--faint)}
+.empty b{color:var(--text);font-weight:600}
+.video .empty{position:absolute;inset:0;color:#8a93a5}
+.video .empty b{color:#e7eaf0}
+
+/* ── Lists ──────────────────────────────────────────── */
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.list li+li{border-top:1px solid var(--border)}
+.tagid{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--tag) 16%,transparent);
+  color:var(--tag);font-weight:700;font-family:var(--mono)}
+.big{font-size:22px;font-weight:650;letter-spacing:-.02em}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px}
+.stat span{display:block;font-size:11.5px;color:var(--muted)}
+.stat b{font-size:17px;font-weight:650;font-family:var(--mono)}
+.euler{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.euler .stat b i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
+#imuPlot{width:100%;height:110px;display:block}
+.net li{cursor:pointer}
+.net li:hover{background:var(--surface-2)}
+.net li.open{background:var(--surface-2);cursor:default;flex-wrap:wrap}
+.net .join{display:flex;gap:8px;width:100%;padding-left:34px}
+.net .join input{flex:1}
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px}
+.bars i{width:3px;border-radius:1px;background:var(--border-strong)}
+.bars i:nth-child(1){height:5px}.bars i:nth-child(2){height:8px}.bars i:nth-child(3){height:11px}.bars i:nth-child(4){height:14px}
+.bars i.on{background:currentColor}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-family:var(--mono);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meter{height:6px;border-radius:99px;background:var(--raised);overflow:hidden;margin-top:6px}
+.meter i{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .4s}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.drop{border:1.5px dashed var(--border-strong);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
+.drop svg{width:26px;height:26px;color:var(--accent);margin-bottom:4px}
+.batt{display:inline-flex;align-items:center}
+.batt .shell{position:relative;width:24px;height:12px;border:1.5px solid currentColor;border-radius:3px;padding:1px}
+.batt .shell::after{content:"";position:absolute;right:-4px;top:3px;width:2px;height:4px;border-radius:0 1px 1px 0;background:currentColor}
+.batt .shell i{display:block;height:100%;border-radius:1px;background:currentColor}
+.battery-big{display:flex;align-items:center;gap:16px}
+.battery-big .batt .shell{width:54px;height:26px;border-width:2px;border-radius:6px;padding:2px}
+.battery-big .batt .shell::after{right:-6px;top:8px;width:3px;height:8px}
+
+/* ── Dialog + toasts ────────────────────────────────── */
+dialog{border:1px solid var(--border);border-radius:16px;background:var(--surface);color:var(--text);padding:0;width:min(400px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.45)}
+dialog::backdrop{background:rgba(5,7,10,.55);backdrop-filter:blur(3px)}
+dialog form{padding:20px;display:grid;gap:12px}
+dialog h3{margin:0;font-size:16px}
+dialog p{margin:0;color:var(--muted);font-size:13px}
+dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+#toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:grid;gap:8px;z-index:50;pointer-events:none}
+.toast{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;background:var(--raised);border:1px solid var(--border-strong);
+  box-shadow:var(--shadow);font-size:13.5px;animation:pop .2s ease}
+.toast.ok svg{color:var(--ok)}.toast.bad svg{color:var(--bad)}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}}
+
+/* ── Mobile ─────────────────────────────────────────── */
+@media (max-width:980px){
+  .live{grid-template-columns:1fr}
+  .grid2{grid-template-columns:1fr}
+}
+@media (max-width:720px){
+  /* backdrop-filter would make the header the containing block of the fixed nav */
+  header{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
+  .bar{padding:10px 14px}
+  main{padding:14px 14px 96px}
+  nav.tabs{position:fixed;left:12px;right:12px;bottom:12px;margin:0;justify-content:space-around;z-index:30;
+    padding:6px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  nav.tabs a{flex-direction:column;gap:3px;padding:6px 8px;font-size:11px;flex:1;justify-content:center}
+  .chips .chip.hide-sm{display:none}
+  .brand small{display:none}
+  input[type=range]{width:120px}
+  .page-head h1{font-size:18px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-live" viewBox="0 0 24 24"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="m15.5 10.5 5-3v9l-5-3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.8 16a4.8 4.8 0 0 1 6.4 0"/><circle cx="12" cy="19" r=".8" fill="currentColor"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.5-2h5L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z"/><circle cx="12" cy="12.5" r="3.2"/></symbol>
+  <symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></symbol>
+  <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3M8 13v3"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 3.5-4"/></symbol>
+  <symbol id="i-axes" viewBox="0 0 24 24"><path d="M12 12V3.5M12 12l7.5 4.5M12 12l-7.5 4.5"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8.5 8.5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s6.5 7 6.5 11a6.5 6.5 0 0 1-13 0c0-4 6.5-11 6.5-11Z"/></symbol>
+  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M12 3v18M8.5 7 4 17h4.5ZM15.5 7l4.5 10h-4.5Z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4M7.5 8.5 12 4l4.5 4.5M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16.5 6.5l2 2M14.5 8.5l1.5 1.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8.5M7 6.2a7.5 7.5 0 1 0 10 0"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7" width="16.5" height="10" rx="2.5"/><path d="M21.5 10.5v3"/></symbol>
+  <symbol id="i-temp" viewBox="0 0 24 24"><path d="M14.5 13.8V5a2.5 2.5 0 0 0-5 0v8.8a4.5 4.5 0 1 0 5 0Z"/><path d="M12 11v5.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="12" rx="4.5"/><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0M3.5 13h4M16.5 13h4M5 8.5l2.5 1.5M19 8.5 16.5 10M5 18l2.5-1.5M19 18l-2.5-1.5"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></symbol>
+</svg>
+
+<header>
+  <div class="bar">
+    <div class="brand">
+      <div class="mark"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg></div>
+      <div>GripLink<small>Wrist camera</small></div>
+    </div>
+    <nav class="tabs" aria-label="Pages">
+      <a href="#live" data-page="live"><svg class="i"><use href="#i-live"/></svg>Live</a>
+      <a href="#camera" data-page="camera"><svg class="i"><use href="#i-sliders"/></svg>Camera</a>
+      <a href="#network" data-page="network"><svg class="i"><use href="#i-wifi"/></svg>Network</a>
+      <a href="#system" data-page="system"><svg class="i"><use href="#i-chip"/></svg>System</a>
+    </nav>
+    <div class="chips">
+      <span class="chip hide-sm" id="chipWifi" title="WiFi"><svg class="i" style="width:15px;height:15px"><use href="#i-wifi"/></svg><b id="chipWifiText">—</b></span>
+      <span class="chip hide-sm" id="chipTemp" title="Chip temperature"><svg class="i" style="width:15px;height:15px"><use href="#i-temp"/></svg><b id="chipTempText">—</b></span>
+      <span class="chip hide-sm" id="chipBatt" title="Battery"></span>
+      <span class="chip" title="Connection to the camera"><span class="dot" id="connDot"></span><b id="connText">Connecting</b></span>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ═══ LIVE ═══════════════════════════════════════════ -->
+<section class="page" id="page-live">
+  <div class="live">
+    <div class="stack">
+      <div class="video" id="video">
+        <img id="cam" alt="">
+        <canvas id="ov"></canvas>
+        <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b>Waiting for video</b><span>Only one viewer can watch the stream at a time.</span></div>
+        <div class="vbar top">
+          <span class="pill" id="resPill">—</span>
+          <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
+          <span class="spacer"></span>
+          <button class="pill btn" id="btnGray" aria-pressed="false" title="Show the grayscale image the tag detector sees"><svg class="i" style="width:16px;height:16px"><use href="#i-eye"/></svg>Detector view</button>
+        </div>
+        <div class="vbar bottom">
+          <span class="spacer"></span>
+          <button class="pill btn" id="btnFocus" hidden title="Focus now"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg>Focus</button>
+          <button class="pill btn" id="btnShot" title="Save a snapshot"><svg class="i" style="width:16px;height:16px"><use href="#i-shot"/></svg>Snapshot</button>
+          <button class="pill btn" id="btnFull" title="Fullscreen" aria-label="Fullscreen"><svg class="i" style="width:16px;height:16px"><use href="#i-full"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-tag"/></svg></span><h2>Tags in view</h2><span class="sub"><span class="badge" id="tagCount">0</span></span></div>
+        <div class="card-b flush">
+          <ul class="list" id="tagList"></ul>
+          <div class="empty" id="tagEmpty"><svg class="i"><use href="#i-tag"/></svg><b>No tags in view</b><span>Only AprilTag 36h11 markers are detected. Print one from the Detection card.</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-gauge"/></svg></span><h2>Detection</h2>
+          <span class="sub"><label class="sw" title="Tag detection on/off"><input type="checkbox" id="detOn" aria-label="Tag detection"></label></span></div>
+        <div class="card-b">
+          <div class="stats">
+            <div class="stat"><span>Rate</span><b id="detRate">—</b></div>
+            <div class="stat"><span>Decode</span><b id="detDecode">—</b></div>
+            <div class="stat"><span>Detect</span><b id="detDetect">—</b></div>
+          </div>
+          <div class="row" style="margin-top:8px"><span class="lbl">Tag type<small>IDs 0–586. QR codes, ArUco and other AprilTag families (16h5, 25h9, 41h12…) are ignored.</small></span><b>AprilTag 36h11</b></div>
+          <div class="row"><label for="tagId">Printable tag<small id="tagHint">Print at 100 % scale on plain white paper and keep it flat.</small></label>
+            <input type="number" id="tagId" min="0" max="586" value="0" aria-label="Tag ID"><a class="btn sm" id="tagOpen" href="/tag?id=0" target="_blank">Open</a></div>
+          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>Each detection takes one frame from the stream. The status LED stays lit while a tag is in view.</span></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-axes"/></svg></span><h2>Orientation</h2><span class="sub" id="imuBadge"></span></div>
+        <div class="card-b" id="imuBody">
+          <canvas id="imuPlot"></canvas>
+          <div class="euler">
+            <div class="stat"><span>Roll</span><b><i style="background:#f87171"></i><span id="eR">0.0°</span></b></div>
+            <div class="stat"><span>Pitch</span><b><i style="background:#34d399"></i><span id="eP">0.0°</span></b></div>
+            <div class="stat"><span>Yaw</span><b><i style="background:#4da3ff"></i><span id="eY">0.0°</span></b></div>
+          </div>
+        </div>
+        <div class="empty" id="imuEmpty" hidden><svg class="i"><use href="#i-axes"/></svg><b>IMU not connected</b><span>Attach an LSM6DSOX (I²C 0x6A) and reboot.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CAMERA ═════════════════════════════════════════ -->
+<section class="page" id="page-camera">
+  <div class="page-head">
+    <div><h1>Camera</h1><p>Changes apply immediately and are kept across reboots. <span id="sensorName"></span></p></div>
+    <button class="btn danger" id="btnCamReset"><svg class="i"><use href="#i-reset"/></svg>Reset to defaults</button>
+  </div>
+  <div class="grid2">
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-image"/></svg></span><h2>Image</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="c-framesize">Resolution<small>Tags are detected at up to 400×300 whatever you pick</small></label>
+            <select id="c-framesize" data-var="framesize">
+              <option value="1">160 × 120</option><option value="5">240 × 240</option><option value="6">320 × 240</option>
+              <option value="10">640 × 480</option><option value="11">800 × 600</option><option value="12">1024 × 768</option>
+              <option value="13">1280 × 720</option><option value="15">1600 × 1200</option>
+            </select></div>
+          <div class="row"><label for="c-quality">JPEG quality<small>Lower is sharper but makes bigger, slower frames</small></label>
+            <input type="range" id="c-quality" data-var="quality" min="4" max="63"><span class="val" data-for="c-quality"></span></div>
+        </div>
+      </div>
+
+      <div class="card" id="focusCard" hidden>
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-focus"/></svg></span><h2>Focus</h2><span class="sub"><span class="badge" id="afState">—</span></span></div>
+        <div class="card-b">
+          <div class="row"><span class="lbl">Mode<small>Continuous refocuses whenever the scene changes</small></span>
+            <div class="seg" id="afSeg"><button data-af="2">Continuous</button><button data-af="1">Single</button><button data-af="0">Infinity</button></div></div>
+          <div class="row"><span class="lbl">Refocus<small>Runs one autofocus pass now, then holds</small></span>
+            <button class="btn sm" id="btnAfNow"><svg class="i"><use href="#i-focus"/></svg>Focus now</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-flip"/></svg></span><h2>Orientation</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="c-hmirror">Mirror<small>Flip left ↔ right</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
+          <div class="row"><label for="c-vflip">Flip<small>Flip top ↕ bottom</small></label><span class="sw"><input type="checkbox" id="c-vflip" data-var="vflip"></span></div>
+          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>AprilTags can't be read in a mirrored image. If text in the feed reads backwards, turn on Mirror.</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-sun"/></svg></span><h2>Exposure</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="c-aec">Auto exposure</label><span class="sw"><input type="checkbox" id="c-aec" data-var="aec"></span></div>
+          <div class="row"><label for="c-ae_level">Exposure compensation</label><input type="range" id="c-ae_level" data-var="ae_level" min="-2" max="2"><span class="val" data-for="c-ae_level"></span></div>
+          <div class="row"><label for="c-agc">Auto gain<small>Brighter in low light, but noisier</small></label><span class="sw"><input type="checkbox" id="c-agc" data-var="agc"></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-drop"/></svg></span><h2>Color</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="c-awb">Auto white balance</label><span class="sw"><input type="checkbox" id="c-awb" data-var="awb"></span></div>
+          <div class="row"><label for="c-wb_mode">White balance preset</label>
+            <select id="c-wb_mode" data-var="wb_mode"><option value="0">Auto</option><option value="1">Sunny</option><option value="2">Cloudy</option><option value="3">Office</option><option value="4">Home</option></select></div>
+          <div class="row"><label for="c-saturation">Saturation</label><input type="range" id="c-saturation" data-var="saturation" min="-2" max="2"><span class="val" data-for="c-saturation"></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-contrast"/></svg></span><h2>Tone</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="c-brightness">Brightness</label><input type="range" id="c-brightness" data-var="brightness" min="-2" max="2"><span class="val" data-for="c-brightness"></span></div>
+          <div class="row"><label for="c-contrast">Contrast<small>Higher contrast helps tag detection</small></label><input type="range" id="c-contrast" data-var="contrast" min="-2" max="2"><span class="val" data-for="c-contrast"></span></div>
+          <div class="row"><label for="c-sharpness">Sharpness</label><input type="range" id="c-sharpness" data-var="sharpness" min="-2" max="2"><span class="val" data-for="c-sharpness"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ NETWORK ════════════════════════════════════════ -->
+<section class="page" id="page-network">
+  <div class="page-head"><div><h1>Network</h1><p>The camera always runs its own hotspot, and can also join one WiFi network.</p></div></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-h"><span class="ic"><svg class="i"><use href="#i-wifi"/></svg></span><h2>Connections</h2></div>
+      <div class="card-b flush">
+        <ul class="list">
+          <li><div style="flex:1;min-width:0"><div class="muted" style="font-size:12px">Hotspot</div><b id="nApSsid">—</b></div>
+            <div style="text-align:right"><div class="num" id="nApIp">—</div><div class="muted" style="font-size:12px" id="nApClients"></div></div></li>
+          <li><div style="flex:1;min-width:0"><div class="muted" style="font-size:12px">WiFi network</div><b id="nStaSsid">Not connected</b></div>
+            <div style="text-align:right"><div class="num" id="nStaIp"></div><div class="muted" style="font-size:12px" id="nStaRssi"></div></div></li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><span class="ic"><svg class="i"><use href="#i-refresh"/></svg></span><h2>Join a network</h2>
+        <span class="sub"><button class="btn sm" id="btnScan"><svg class="i"><use href="#i-refresh"/></svg>Scan</button></span></div>
+      <div class="card-b flush">
+        <ul class="list net" id="netList"></ul>
+        <div class="empty" id="netEmpty"><svg class="i"><use href="#i-wifi"/></svg><b>No scan yet</b><span>Scanning pauses video for about two seconds.</span></div>
+      </div>
+      <div class="card-b" style="padding-top:0"><p class="hint" style="margin:0"><svg class="i"><use href="#i-info"/></svg><span>The chosen network is remembered. Switching can briefly disconnect devices on the hotspot.</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ SYSTEM ═════════════════════════════════════════ -->
+<section class="page" id="page-system">
+  <div class="page-head"><div><h1>System</h1><p>Device health, power and maintenance.</p></div></div>
+  <div class="grid2">
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-battery"/></svg></span><h2>Battery</h2></div>
+        <div class="card-b" id="battBody"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><h2>Device</h2></div>
+        <div class="card-b">
+          <dl class="kv">
+            <dt>Camera sensor</dt><dd id="sSensor">—</dd>
+            <dt>Autofocus</dt><dd id="sAf">—</dd>
+            <dt>IMU</dt><dd id="sImu">—</dd>
+            <dt>Chip temperature</dt><dd id="sTemp">—</dd>
+            <dt>Uptime</dt><dd id="sUptime">—</dd>
+            <dt>Firmware built</dt><dd id="sBuild">—</dd>
+          </dl>
+          <div style="margin-top:14px" class="tiles">
+            <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
+            <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>PSRAM free</span><span class="num" id="sPsram">—</span></div><div class="meter"><i id="sPsramBar" style="width:0"></i></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-upload"/></svg></span><h2>Firmware update</h2></div>
+        <div class="card-b">
+          <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose firmware file">
+            <svg class="i"><use href="#i-upload"/></svg>
+            <div><b style="color:var(--text)">Drop firmware.bin</b> or click to choose</div>
+            <div style="font-size:12px;margin-top:2px">.pio/build/firebeetle2_esp32s3/firmware.bin</div>
+            <input type="file" id="otaFile" accept=".bin" hidden>
+          </div>
+          <div id="otaProg" hidden style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:12.5px"><span id="otaText">Uploading…</span><span class="num" id="otaPct">0%</span></div><div class="meter"><i id="otaBar" style="width:0"></i></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-key"/></svg></span><h2>Access</h2></div>
+        <div class="card-b">
+          <div class="row"><span class="lbl">API token<small id="tokState">—</small></span>
+            <button class="btn sm" id="btnTokSet">Enter token</button><button class="btn sm ghost" id="btnTokForget">Forget</button></div>
+          <p class="hint"><svg class="i"><use href="#i-lock"/></svg><span>Changing settings, networks or firmware needs the API_TOKEN from secrets.h. It's stored only in this browser.</span></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-bug"/></svg></span><h2>Maintenance</h2></div>
+        <div class="card-b">
+          <div class="row"><span class="lbl">Diagnostics<small>Raw data for debugging</small></span>
+            <a class="btn sm" href="/status" target="_blank">Status JSON</a><a class="btn sm" href="/debug/gray.bmp" target="_blank">Detector frame</a></div>
+          <div class="row"><span class="lbl">Restart<small>Video drops for about ten seconds</small></span>
+            <button class="btn sm danger" id="btnReboot"><svg class="i"><use href="#i-power"/></svg>Reboot</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<dialog id="tokDlg">
+  <form method="dialog">
+    <h3>API token</h3>
+    <p>Enter the <code>API_TOKEN</code> from <code>src/secrets.h</code>. It's saved in this browser only.</p>
+    <input type="password" id="tokInput" autocomplete="off" placeholder="Token" required>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
+  </form>
+</dialog>
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icon = (id, style = '') => `<svg class="i" style="${style}"><use href="#i-${id}"/></svg>`;
+
+// ── Toasts ────────────────────────────────────────────
+function toast(msg, kind = 'ok') {
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  t.innerHTML = icon(kind === 'ok' ? 'check' : 'alert') + `<span>${esc(msg)}</span>`;
+  $('#toasts').append(t);
+  setTimeout(() => t.remove(), 2600);
+}
+
+// ── API + token ───────────────────────────────────────
+const TOK_KEY = 'glTok';
+const store = {
+  get() { try { return localStorage.getItem(TOK_KEY) || ''; } catch (_) { return ''; } },
+  set(v) { try { localStorage.setItem(TOK_KEY, v); } catch (_) {} renderTok(); },
+  clear() { try { localStorage.removeItem(TOK_KEY); } catch (_) {} renderTok(); },
+};
+function askToken() {
+  return new Promise(resolve => {
+    const d = $('#tokDlg'), inp = $('#tokInput');
+    inp.value = '';
+    d.returnValue = '';
+    d.onclose = () => {
+      if (d.returnValue === 'ok' && inp.value) { store.set(inp.value.trim()); resolve(true); }
+      else resolve(false);
+    };
+    d.showModal();
+    inp.focus();
+  });
+}
+async function getJSON(path, ms = 4000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(path, {signal: ctl.signal, cache: 'no-store'}); if (!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+// State-changing calls: send the token, ask for it once on 401
+async function authed(path, opts = {}) {
+  if (!store.get() && !(await askToken())) throw new Error('No token');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await fetch(path, {...opts, headers: {...(opts.headers || {}), 'X-Token': store.get()}});
+    if (r.status !== 401) {
+      if (!r.ok) throw new Error((await r.text()) || r.status);
+      return r;
+    }
+    store.clear();
+    if (attempt || !(await askToken())) throw new Error('Wrong token');
+  }
+}
+
+// One instance per name; stops itself when the Live page is left
+const loops = {};
+function loop(name, fn, ms) {
+  if (loops[name]) return;
+  loops[name] = true;
+  (async function tick() {
+    if (page !== 'live') { loops[name] = false; return; }
+    await fn();
+    setTimeout(tick, ms);
+  })();
+}
+
+// ── Routing ───────────────────────────────────────────
+const pages = ['live', 'camera', 'network', 'system'];
+let page = null;
+function route() {
+  const next = pages.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'live';
+  if (next === page) return;
+  page = next;
+  for (const p of pages) $('#page-' + p).classList.toggle('on', p === page);
+  $$('nav.tabs a').forEach(a => a.dataset.page === page ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
+  setStream(page === 'live');
+  if (page === 'camera') loadCamera();
+  if (page === 'live') { loop('det', pollDet, 200); loop('pose', pollPose, 100); }
+}
+addEventListener('hashchange', route);
+
+// ── Status (header + system page) ─────────────────────
+let S = null, online = false;
+const bars = rssi => { const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75 ? 2 : 1;
+  return '<span class="bars">' + [1,2,3,4].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>'; };
+const fmtUp = s => { const d = s / 86400 | 0, h = s / 3600 % 24 | 0, m = s / 60 % 60 | 0;
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60 | 0}s`; };
+const fmtBytes = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024 | 0) + ' KB';
+function battHTML(pct) {
+  const color = pct > 50 ? 'var(--ok)' : pct > 20 ? 'var(--warn)' : 'var(--bad)';
+  return `<span class="batt" style="color:${color}"><span class="shell"><i style="width:${Math.max(4, pct)}%"></i></span></span>`;
+}
+function setOnline(on) {
+  online = on;
+  $('#connDot').className = 'dot ' + (on ? 'ok' : 'bad');
+  $('#connText').textContent = on ? 'Online' : 'Offline';
+}
+async function pollStatus() {
+  try { S = await getJSON('/status'); setOnline(true); renderStatus(); }
+  catch (_) { setOnline(false); }
+  setTimeout(pollStatus, 2000);
+}
+function renderStatus() {
+  const w = S.wifi, b = S.battery;
+  $('#chipWifiText').innerHTML = w.sta_ssid ? esc(w.sta_ssid) : 'Hotspot only';
+  $('#chipBatt').innerHTML = b.wired ? battHTML(b.percent) + `<b>${b.percent}%</b>` : icon('battery', 'width:16px;height:16px') + '<span>Not wired</span>';
+  // Network page
+  $('#nApSsid').textContent = w.ap_ssid;
+  $('#nApIp').textContent = w.ap_ip;
+  $('#nApClients').textContent = w.ap_clients === 1 ? '1 device' : w.ap_clients + ' devices';
+  $('#nStaSsid').textContent = w.sta_ssid || 'Not connected';
+  $('#nStaIp').textContent = w.sta_ip || '';
+  $('#nStaRssi').innerHTML = w.sta_ssid ? `<span style="color:var(--text)">${bars(w.rssi)}</span> <span class="num">${w.rssi} dBm</span>` : (w.saved ? 'Saved: ' + esc(w.saved) : '');
+  // System page
+  const afNames = {none: 'Fixed focus', idle: 'Idle', focusing: 'Focusing', focused: 'Focused', error: 'Error'};
+  $('#sSensor').textContent = S.sensor;
+  $('#sAf').textContent = afNames[S.af] || S.af;
+  $('#sImu').textContent = S.imu.state === 'none' ? 'Not connected' : S.imu.state === 'ok' ? `OK · ${S.imu.samples} samples` : 'Calibrating';
+  const t = S.temp_c, tLvl = t >= 80 ? 'bad' : t >= 70 ? 'warn' : 'ok';
+  $('#chipTempText').textContent = t.toFixed(0) + ' °C';
+  $('#chipTempText').style.color = tLvl === 'ok' ? '' : `var(--${tLvl})`;
+  $('#sTemp').innerHTML = `<span class="num">${t.toFixed(1)} °C</span> <span class="badge ${tLvl}">${{ok: 'Normal', warn: 'Warm', bad: 'Hot'}[tLvl]}</span>`;
+  $('#sUptime').textContent = fmtUp(S.uptime);
+  $('#sBuild').textContent = S.build;
+  $('#sHeap').textContent = fmtBytes(S.heap);
+  $('#sHeapBar').style.width = Math.min(100, S.heap / 327680 * 100) + '%';
+  $('#sPsram').textContent = fmtBytes(S.psram);
+  $('#sPsramBar').style.width = (S.psram / S.psram_total * 100) + '%';
+  $('#battBody').innerHTML = b.wired
+    ? `<div class="battery-big">${battHTML(b.percent)}<div><div class="big">${b.percent}%</div><div class="muted num">${b.voltage.toFixed(2)} V</div></div></div>`
+    : `<div class="empty" style="padding:6px 0 2px">${icon('battery')}<b>No battery sensor wired</b>
+       <span>This board doesn't connect the battery to any pin. Wire BAT+ → 100 kΩ → GPIO 10 → 100 kΩ → GND, then set <code>BAT_PIN 10</code> in config.h.</span></div>`;
+  // Live page bits that come from status
+  $('#detOn').checked = S.detect.enabled;
+  const [dT, dS] = S.sensor === 'none' ? ['No camera', 'The camera failed to start.']
+    : S.detect.ready === false ? ['Detector failed to start', 'Its self-test failed at boot. See the serial log.']
+    : ['No tags in view', 'Only AprilTag 36h11 markers are detected. Print one from the Detection card.'];
+  $('#tagEmpty b').textContent = dT;
+  $('#tagEmpty span').textContent = dS;
+  if (S.detect.tag_mm) $('#tagHint').textContent = `Print at 100 % scale on plain white paper and keep it flat. Distances assume the black square measures ${S.detect.tag_mm} mm.`;
+  const af = S.af !== 'none';
+  $('#btnFocus').hidden = !af;
+  $('#focusPill').hidden = !af;
+  $('#focusPillText').textContent = afNames[S.af] || S.af;
+  const imuOn = S.imu.state !== 'none';
+  $('#imuBody').hidden = !imuOn;
+  $('#imuEmpty').hidden = imuOn;
+  $('#imuBadge').innerHTML = imuOn ? `<span class="badge ${S.imu.state === 'ok' ? 'ok' : 'warn'}">${S.imu.state === 'ok' ? 'Live' : 'Calibrating'}</span>` : '';
+  if (!streamPort) { streamPort = S.stream_port; setStream(page === 'live'); }
+}
+
+// ── Live: stream, detector view, overlay ──────────────
+const cam = $('#cam'), ov = $('#ov'), oc = ov.getContext('2d');
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+let streamPort = 0, grayMode = false, grayTimer = 0, streamOn = false;
+function setStream(on) {
+  clearTimeout(grayTimer);
+  streamOn = on && !!streamPort;
+  if (!streamOn) { cam.src = BLANK; return; }
+  if (grayMode) { refreshGray(); return; }
+  cam.classList.remove('gray');
+  cam.src = `${location.protocol}//${location.hostname}:${streamPort}/stream`;
+}
+function refreshGray() {
+  cam.classList.add('gray');
+  cam.src = '/debug/gray.bmp?t=' + Date.now();
+  grayTimer = setTimeout(refreshGray, 800);
+}
+$('#btnGray').onclick = e => {
+  grayMode = !grayMode;
+  e.currentTarget.setAttribute('aria-pressed', grayMode);
+  setStream(page === 'live');
+};
+$('#btnShot').onclick = async () => {
+  try {
+    const r = await fetch('/snapshot'); if (!r.ok) throw 0;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = 'griplink-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } catch (_) { toast('Snapshot failed', 'bad'); }
+};
+$('#btnFull').onclick = () => { const v = $('#video'); document.fullscreenElement ? document.exitFullscreen() : v.requestFullscreen?.(); };
+$('#btnFocus').onclick = () => setCam('af', 1, 'Focusing…');
+
+let det = null, quat = [1, 0, 0, 0];
+async function pollDet() {
+  try { det = await getJSON('/detections', 2000); renderDet(); } catch (_) {}
+}
+function fresh() {
+  if (!det || det.age_ms < 0) return false;
+  return det.age_ms < Math.max(1500, 2.5 * (det.decode_ms + det.detect_ms));
+}
+function renderDet() {
+  const tags = fresh() ? det.tags : [];
+  $('#tagCount').textContent = tags.length;
+  $('#tagCount').className = 'badge' + (tags.length ? ' acc' : '');
+  $('#tagEmpty').hidden = tags.length > 0;
+  $('#tagList').innerHTML = tags.map(({ id, pose: { tx, ty, tz, q = [1, 0, 0, 0] } }) => `<li><span class="tagid">${id}</span>
+    <div style="flex:1"><div class="big num" style="font-size:18px">${Math.hypot(tx, ty, tz).toFixed(2)} m</div>
+    <div class="muted num" style="font-size:12px">pos ${sgn(tx)} ${sgn(ty)} ${sgn(tz)} m</div>
+    <div class="muted num" style="font-size:12px">q ${q[0].toFixed(2)} ${sgn(q[1])} ${sgn(q[2])} ${sgn(q[3])}</div></div></li>`).join('');
+  if (det && det.w) $('#resPill').textContent = `${det.w} × ${det.h}`;
+  const ms = det ? det.decode_ms + det.detect_ms : 0;
+  $('#detRate').textContent = ms && S?.detect.enabled ? (1000 / Math.max(ms, 200)).toFixed(1) + ' Hz' : '—';
+  $('#detDecode').textContent = det?.decode_ms ? det.decode_ms + ' ms' : '—';
+  $('#detDetect').textContent = det?.detect_ms ? det.detect_ms + ' ms' : '—';
+}
+$('#tagId').oninput = e => {
+  const id = Math.min(586, Math.max(0, parseInt(e.target.value, 10) || 0));
+  $('#tagOpen').href = '/tag?id=' + id;
+};
+$('#detOn').onchange = async e => {
+  const on = e.target.checked;
+  try { await authed('/detector/set?enabled=' + (on ? 1 : 0)); toast(on ? 'Detection on' : 'Detection off'); }
+  catch (err) { e.target.checked = !on; toast(err.message, 'bad'); }
+};
+
+async function pollPose() {
+  if (S && S.imu.state !== 'none') { try { quat = (await getJSON('/pose', 2000)).q; } catch (_) {} }
+}
+
+// Overlay: tags + IMU axes, drawn at device pixel resolution
+function sizeCanvas(c) {
+  const r = c.getBoundingClientRect(), d = devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * d) || c.height !== Math.round(r.height * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
+  return [c.width, c.height, d];
+}
+function qMat(w, x, y, z) {
+  return [[1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y)], [2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x)], [2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y)]];
+}
+function qEul(w, x, y, z) {
+  const r = Math.atan2(2*(w*x+y*z), 1-2*(x*x+y*y)), s = 2*(w*y-z*x);
+  const p = Math.abs(s) >= 1 ? Math.sign(s) * Math.PI / 2 : Math.asin(s);
+  return [r, p, Math.atan2(2*(w*z+x*y), 1-2*(y*y+z*z))].map(v => v * 180 / Math.PI);
+}
+function drawOverlay() {
+  const [W, H, d] = sizeCanvas(ov);
+  oc.clearRect(0, 0, W, H);
+  if (page === 'live' && fresh() && det.tags.length) {
+    // The image is letterboxed (object-fit: contain) — map source pixels into it
+    const s = Math.min(W / det.w, H / det.h), ox = (W - det.w * s) / 2, oy = (H - det.h * s) / 2;
+    // Pose → canvas: pinhole projection with the detector's intrinsics
+    const f = det.f || det.w, cx = det.w / 2, cy = det.h / 2;
+    const proj = ([X, Y, Z]) => [ox + (f * X / Z + cx) * s, oy + (f * Y / Z + cy) * s];
+    placed = [];
+    for (const t of det.tags) drawTag(t, t.corners.map(([x, y]) => [ox + x * s, oy + y * s]), proj, W, H, d);
+  }
+  if (S && S.imu.state !== 'none') drawAxes(W, H, d);
+}
+// Oriented box around each tag (follows its edges in perspective) with corner
+// brackets, the tag's pose axes, and a tab with ID, position and quaternion.
+// One bright colour in both themes: it sits on video, and a dark halo keeps it
+// visible against the tag's white paper.
+const BOX = '#22d3ee', AXES = [['X', '#f87171'], ['Y', '#34d399'], ['Z', '#4da3ff']];
+const sgn = v => { const r = Math.round(v * 100) / 100; return (r < 0 ? '−' : '+') + Math.abs(r).toFixed(2); };
+let placed = []; // label rects drawn this frame
+function drawTag(t, p, proj, W, H, d) {
+  const halo = (w, col, path) => {
+    oc.lineWidth = w + 2.5 * d; oc.strokeStyle = 'rgba(0,0,0,.45)'; path(); oc.stroke();
+    oc.lineWidth = w; oc.strokeStyle = col; path(); oc.stroke();
+  };
+  const poly = pts => () => { oc.beginPath(); pts.forEach(([x, y], i) => i ? oc.lineTo(x, y) : oc.moveTo(x, y)); oc.closePath(); };
+  oc.lineJoin = oc.lineCap = 'round';
+  // Exact outline, then the same quad pushed out ~6 px along its diagonals
+  oc.fillStyle = BOX + '1f'; poly(p)(); oc.fill();
+  halo(1.5 * d, BOX, poly(p));
+  const c = p.reduce((a, [x, y]) => [a[0] + x / 4, a[1] + y / 4], [0, 0]);
+  const e = p.map(([x, y]) => { const dx = x - c[0], dy = y - c[1], n = Math.hypot(dx, dy) || 1; return [x + dx / n * 8.5 * d, y + dy / n * 8.5 * d]; });
+  oc.globalAlpha = .7; halo(1 * d, BOX, poly(e)); oc.globalAlpha = 1;
+  const edge = Math.min(...e.map((q, i) => Math.hypot(q[0] - e[(i + 1) % 4][0], q[1] - e[(i + 1) % 4][1])));
+  const k = Math.min(14 * d, edge / 3);
+  halo(3 * d, BOX, () => {
+    oc.beginPath();
+    e.forEach(([x, y], i) => {
+      for (const [nx, ny] of [e[(i + 3) % 4], e[(i + 1) % 4]]) {
+        const n = Math.hypot(nx - x, ny - y) || 1;
+        oc.moveTo(x, y); oc.lineTo(x + (nx - x) / n * k, y + (ny - y) / n * k);
+      }
+    });
+  });
+  // Pose axes from the tag centre, half a tag long (z points into the tag)
+  const [qw, qx, qy, qz] = t.pose.q || [1, 0, 0, 0], T = [t.pose.tx, t.pose.ty, t.pose.tz];
+  const R = qMat(qw, qx, qy, qz), L = (det.tag_m || .165) / 2;
+  if (T[2] > 0) {
+    const o = proj(T);
+    AXES.forEach(([lbl, col], i) => {
+      const a = proj([T[0] + R[0][i] * L, T[1] + R[1][i] * L, T[2] + R[2][i] * L]);
+      halo(2.5 * d, col, () => { oc.beginPath(); oc.moveTo(...o); oc.lineTo(...a); });
+      oc.font = `700 ${10 * d}px system-ui,sans-serif`; oc.fillStyle = col;
+      oc.fillText(lbl, a[0] + 3 * d, a[1] - 3 * d);
+    });
+    oc.fillStyle = '#fff'; oc.beginPath(); oc.arc(...o, 2.5 * d, 0, 7); oc.fill();
+  }
+  // Tab: above the box, else below, else the first free slot; on a narrow
+  // video only ID and distance (the tag list has the full pose)
+  const title = `ID ${t.id} · ${Math.hypot(...T).toFixed(2)} m`;
+  const lines = W / d < 560 ? [] : [`pos ${sgn(T[0])} ${sgn(T[1])} ${sgn(T[2])}`, `q   ${qw.toFixed(2)} ${sgn(qx)} ${sgn(qy)} ${sgn(qz)}`];
+  const TITLE = `700 ${12 * d}px system-ui,sans-serif`, MONO = `500 ${10.5 * d}px ui-monospace,SFMono-Regular,Menlo,monospace`;
+  oc.font = TITLE; const w0 = oc.measureText(title).width;
+  oc.font = MONO; const w1 = Math.max(0, ...lines.map(l => oc.measureText(l).width));
+  const tw = Math.max(w0, w1) + 16 * d, th = (lines.length ? 50 : 23) * d, gap = 4 * d, top = 48 * d;
+  const ex = e.map(q => q[0]), ey = e.map(q => q[1]);
+  const x0 = Math.min(...ex), y0 = Math.min(...ey), y1 = Math.max(...ey);
+  const lx = Math.max(gap, Math.min(x0, W - tw - gap));
+  const free = y => y >= top && y + th <= H - gap &&
+    !placed.some(([rx, ry, rw, rh]) => lx < rx + rw && lx + tw > rx && y < ry + rh && y + th > ry);
+  let ly = [y0 - th - gap, y1 + gap].find(free);
+  for (let y = top; ly === undefined && y + th <= H - gap; y += 6 * d) if (free(y)) ly = y;
+  if (ly === undefined) ly = Math.max(top, y0 - th - gap);
+  placed.push([lx, ly, tw, th]);
+  oc.fillStyle = 'rgba(6,10,14,.8)'; oc.beginPath(); oc.roundRect(lx, ly, tw, th, 7 * d); oc.fill();
+  oc.fillStyle = BOX; oc.fillRect(lx, ly + 6 * d, 2.5 * d, th - 12 * d);
+  oc.font = TITLE; oc.fillStyle = BOX; oc.fillText(title, lx + 8 * d, ly + 16 * d);
+  oc.font = MONO; oc.fillStyle = '#e7eaf0';
+  lines.forEach((l, i) => oc.fillText(l, lx + 8 * d, ly + (31 + 13 * i) * d));
+}
+function drawAxes(W, H, d) {
+  const R = qMat(...quat), cx = 56 * d, cy = H - 56 * d, len = 34 * d;
+  oc.fillStyle = 'rgba(10,12,16,.55)'; oc.beginPath(); oc.arc(cx, cy, 44 * d, 0, 7); oc.fill();
+  [[0, '#f87171', 'X'], [1, '#34d399', 'Y'], [2, '#4da3ff', 'Z']].forEach(([i, col, lbl]) => {
+    const v = [R[0][i], R[1][i], R[2][i]], k = len / (2.5 - v[2] * .6);
+    const x = cx + v[0] * k * 1.6, y = cy - v[1] * k * 1.6;
+    oc.strokeStyle = oc.fillStyle = col; oc.lineWidth = 2.5 * d; oc.lineCap = 'round';
+    oc.beginPath(); oc.moveTo(cx, cy); oc.lineTo(x, y); oc.stroke();
+    oc.font = `700 ${10 * d}px system-ui,sans-serif`; oc.fillText(lbl, x + 3 * d, y - 3 * d);
+  });
+}
+// Rolling euler plot
+const plot = $('#imuPlot'), pc = plot.getContext('2d'), HIST = 240;
+const hist = [new Float32Array(HIST), new Float32Array(HIST), new Float32Array(HIST)];
+let lastSample = 0;
+function drawPlot(now) {
+  if (now - lastSample > 50) { // 20 Hz regardless of display refresh rate
+    lastSample = now;
+    const e = qEul(...quat);
+    hist.forEach((h, i) => { h.copyWithin(0, 1); h[HIST - 1] = e[i]; });
+    $('#eR').textContent = e[0].toFixed(1) + '°'; $('#eP').textContent = e[1].toFixed(1) + '°'; $('#eY').textContent = e[2].toFixed(1) + '°';
+  }
+  const [W, H, d] = sizeCanvas(plot), css = getComputedStyle(document.documentElement);
+  pc.clearRect(0, 0, W, H);
+  pc.strokeStyle = css.getPropertyValue('--border').trim(); pc.lineWidth = d;
+  for (const g of [-90, 0, 90]) { const y = H / 2 - g / 180 * (H / 2 - 4 * d); pc.beginPath(); pc.moveTo(0, y); pc.lineTo(W, y); pc.stroke(); }
+  ['#f87171', '#34d399', '#4da3ff'].forEach((col, i) => {
+    pc.strokeStyle = col; pc.lineWidth = 1.8 * d; pc.beginPath();
+    hist[i].forEach((v, j) => { const x = j / (HIST - 1) * W, y = H / 2 - v / 180 * (H / 2 - 4 * d); j ? pc.lineTo(x, y) : pc.moveTo(x, y); });
+    pc.stroke();
+  });
+}
+function frame(now) {
+  if (page === 'live') {
+    // naturalWidth turns non-zero once the first MJPEG frame has decoded
+    $('#camEmpty').hidden = !streamOn || (cam.naturalWidth > 1 && cam.src !== BLANK);
+    drawOverlay();
+    if (S && S.imu.state !== 'none') drawPlot(now);
+  }
+  requestAnimationFrame(frame);
+}
+
+// ── Camera settings ───────────────────────────────────
+let C = null;
+async function loadCamera() {
+  try { C = await getJSON('/camera/status'); } catch (_) { toast('Could not read camera settings', 'bad'); return; }
+  $('#sensorName').textContent = C.sensor ? `Sensor: ${C.sensor}.` : '';
+  $$('[data-var]').forEach(el => {
+    const v = C[el.dataset.var]; if (v === undefined) return;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+    showVal(el);
+  });
+  const hasAf = C.af >= 0;
+  $('#focusCard').hidden = !hasAf;
+  if (hasAf) renderAf(C.af, C.af_state);
+}
+function showVal(el) { const o = $(`[data-for="${el.id}"]`); if (o) o.textContent = (el.value > 0 && el.min < 0 ? '+' : '') + el.value; }
+function renderAf(mode, state) {
+  $$('#afSeg button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.af === mode));
+  const m = {focused: ['ok', 'Focused'], focusing: ['warn', 'Focusing'], idle: ['', 'Idle'], error: ['bad', 'Error']}[state] || ['', state];
+  $('#afState').className = 'badge ' + m[0]; $('#afState').textContent = m[1];
+}
+async function setCam(v, val, okMsg = 'Saved') {
+  try {
+    await authed(`/camera/set?var=${v}&val=${val}`);
+    toast(okMsg);
+    if (v === 'af' && C) { C.af = val === 1 ? C.af : val; setTimeout(loadCamera, 900); }
+    return true;
+  } catch (e) { toast(e.message === 'Wrong token' || e.message === 'No token' ? e.message : `Couldn't change ${v}`, 'bad'); return false; }
+}
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+$$('[data-var]').forEach(el => {
+  const send = async () => {
+    const val = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
+    if (!(await setCam(el.dataset.var, val))) loadCamera(); // revert on failure
+  };
+  if (el.type === 'range') { el.oninput = () => showVal(el); el.onchange = debounce(send, 150); }
+  else el.onchange = send;
+});
+$$('#afSeg button').forEach(b => b.onclick = () => setCam('af', +b.dataset.af, b.dataset.af === '1' ? 'Focusing…' : 'Focus mode saved'));
+$('#btnAfNow').onclick = () => setCam('af', 1, 'Focusing…');
+$('#btnCamReset').onclick = async () => {
+  if (!confirm('Reset all camera settings to defaults? The camera restarts.')) return;
+  try { await authed('/camera/reset', {method: 'POST'}); toast('Restarting with defaults…'); setTimeout(() => location.reload(), 9000); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+
+// ── Network ───────────────────────────────────────────
+$('#btnScan').onclick = async e => {
+  const btn = e.currentTarget; btn.disabled = true; btn.lastChild.textContent = 'Scanning…';
+  try {
+    const d = await getJSON('/wifi/scan', 15000);
+    const nets = d.networks.filter(n => n.ssid).sort((a, b) => b.rssi - a.rssi);
+    $('#netEmpty').hidden = nets.length > 0;
+    if (!nets.length) $('#netEmpty').innerHTML = icon('wifi') + '<b>No networks found</b>';
+    $('#netList').innerHTML = nets.map(n => `<li data-ssid="${esc(n.ssid)}" data-enc="${n.enc}">
+      <span style="color:var(--text)">${bars(n.rssi)}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.ssid)}</span>
+      ${n.ssid === d.sta ? '<span class="badge ok">Connected</span>' : ''}${n.enc ? icon('lock', 'width:15px;height:15px;color:var(--faint)') : ''}</li>`).join('');
+  } catch (_) { toast('Scan failed', 'bad'); }
+  btn.disabled = false; btn.lastChild.textContent = 'Scan';
+};
+$('#netList').onclick = e => {
+  const li = e.target.closest('li'); if (!li || li.classList.contains('open')) return;
+  $$('#netList li.open').forEach(o => { o.classList.remove('open'); o.querySelector('.join')?.remove(); });
+  li.classList.add('open');
+  const f = document.createElement('form'); f.className = 'join';
+  f.innerHTML = (li.dataset.enc === '1' ? '<input type="password" placeholder="Password" required autocomplete="off">' : '<span class="muted" style="flex:1">Open network</span>') +
+    '<button class="btn primary sm">Connect</button><button type="button" class="btn sm ghost">Cancel</button>';
+  li.append(f); f.querySelector('input')?.focus();
+  f.lastChild.onclick = ev => { ev.stopPropagation(); li.classList.remove('open'); f.remove(); };
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const pass = f.querySelector('input')?.value || '';
+    try {
+      await authed('/wifi/connect', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: li.dataset.ssid, pass})});
+      toast('Connecting to ' + li.dataset.ssid + '…'); li.classList.remove('open'); f.remove();
+    } catch (err) { toast(err.message, 'bad'); }
+  };
+};
+
+// ── System ────────────────────────────────────────────
+function renderTok() {
+  const has = !!store.get();
+  $('#tokState').textContent = has ? 'Saved in this browser' : 'Not set — you will be asked when needed';
+  $('#btnTokSet').textContent = has ? 'Change' : 'Enter token';
+  $('#btnTokForget').hidden = !has;
+}
+$('#btnTokSet').onclick = async () => { if (await askToken()) toast('Token saved'); };
+$('#btnTokForget').onclick = () => { store.clear(); toast('Token forgotten'); };
+$('#btnReboot').onclick = async () => {
+  if (!confirm('Reboot the camera now?')) return;
+  try { await authed('/system/reboot', {method: 'POST'}); toast('Rebooting…'); setTimeout(() => location.reload(), 9000); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+const drop = $('#drop'), otaFile = $('#otaFile');
+drop.onclick = () => otaFile.click();
+drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); otaFile.click(); } };
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('drag'); };
+drop.ondragleave = () => drop.classList.remove('drag');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('drag'); upload(e.dataTransfer.files[0]); };
+otaFile.onchange = () => upload(otaFile.files[0]);
+async function upload(file) {
+  if (!file || !file.name.endsWith('.bin')) { toast('Choose a .bin firmware file', 'bad'); return; }
+  if (!store.get() && !(await askToken())) return;
+  const prog = $('#otaProg'), bar = $('#otaBar'), pct = $('#otaPct'), txt = $('#otaText');
+  prog.hidden = false; txt.textContent = 'Uploading ' + file.name; bar.style.width = '0'; pct.textContent = '0%';
+  const x = new XMLHttpRequest();
+  x.open('POST', '/ota');
+  x.setRequestHeader('Content-Type', 'application/octet-stream');
+  x.setRequestHeader('X-Token', store.get());
+  x.upload.onprogress = e => { if (e.lengthComputable) { const p = e.loaded / e.total * 100 | 0; bar.style.width = p + '%'; pct.textContent = p + '%'; } };
+  x.onload = () => {
+    if (x.status === 200) { txt.textContent = 'Installed — restarting…'; bar.style.width = '100%'; setTimeout(() => location.reload(), 10000); }
+    else { if (x.status === 401) store.clear(); txt.textContent = 'Failed: ' + (x.responseText || x.status); }
+  };
+  x.onerror = () => { store.clear(); txt.textContent = 'Upload failed — check the token and try again'; };
+  x.send(file);
+}
+
+// ── Start ─────────────────────────────────────────────
+renderTok();
+route();
+pollStatus();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

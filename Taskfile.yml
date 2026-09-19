@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   ENV: firebeetle2_esp32s3
+  SOURCES: src/*.cpp src/*.h lib/*/*.h lib/*/*.hpp
 
 tasks:
   build:
@@ -12,7 +13,8 @@ tasks:
   flash:
     desc: "Flash firmware, then open serial monitor — Ctrl+C to exit"
     cmds:
-      - pio run -e {{.ENV}} -t clean -t upload
+      - pkill -f "pio device monitor" || true
+      - pio run -e {{.ENV}} -t upload
       - pio device monitor -e {{.ENV}}
 
   monitor:
@@ -26,21 +28,25 @@ tasks:
       - pio check -e {{.ENV}} --skip-packages --fail-on-defect high
 
   format:
-    desc: "Format source files with clang-format"
+    desc: "Format all firmware sources with clang-format"
     cmds:
-      - clang-format -i src/main.cpp lib/DFRobot_AXP313A/DFRobot_AXP313A.h
+      - clang-format -i {{.SOURCES}}
 
   ci:
     desc: "Run all CI stages locally: format, check, build"
     cmds:
       - |
         set -e
-        task format
-        git diff --exit-code || (echo "ERROR: clang-format changed files — stage them and re-commit" && exit 1)
+        clang-format --dry-run --Werror {{.SOURCES}} || (echo "ERROR: run 'task format' and re-commit" && exit 1)
         task check
         task build
 
+  clean:
+    desc: "Remove build artifacts (full rebuild next time)"
+    cmds:
+      - pio run -e {{.ENV}} -t clean
+
   factory:
-    desc: "Erase all flash — clears saved WiFi credentials"
+    desc: "Erase all flash — clears saved WiFi credentials (reflash afterwards)"
     cmds:
       - pio run -e {{.ENV}} --target erase

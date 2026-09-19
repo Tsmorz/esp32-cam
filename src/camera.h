@@ -2,6 +2,10 @@
 #include <esp_http_server.h>
 
 bool camera_init();
-void camera_set(const char *var, int val);
-esp_err_t index_handler(httpd_req_t *req);
+const char *camera_sensor_name(); // e.g. "OV5640"; "none" before init
+// false = unknown var or out of range. persist: remember across reboots.
+bool camera_set(const char *var, int val, bool persist = true);
+void camera_restore();        // re-apply saved settings (after focus_init)
+void camera_reset_settings(); // forget saved settings (takes effect on boot)
+size_t camera_status_json(char *buf, size_t size);
 esp_err_t stream_handler(httpd_req_t *req);

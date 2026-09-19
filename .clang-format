@@ -1,0 +1,2 @@
+# Matches the style main.cpp and camera.cpp already used (clang-format defaults)
+BasedOnStyle: LLVM

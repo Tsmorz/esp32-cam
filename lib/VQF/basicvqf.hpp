@@ -1,97 +1,178 @@
 #pragma once
-// BasicVQF — VQF orientation filter (6D, gyro + accel, no magnetometer).
-// Algorithm from: Laidig & Seel (2023) "VQF: Highly Accurate IMU Orientation
-// Estimation with Bias Estimation and Magnetic Disturbance Rejection".
-// This is the simplified (no bias estimation) variant.
+// BasicVQF — 6D orientation (gyro + accel, no magnetometer, no bias
+// estimation). Port of BasicVQF from Laidig & Seel (2023) "VQF: Highly
+// Accurate IMU Orientation Estimation with Bias Estimation and Magnetic
+// Disturbance Rejection", https://github.com/dlaidig/vqf
+//
+// The gyroscope is integrated into gyrQuat. Accelerometer samples are rotated
+// into that almost-inertial frame *before* low-pass filtering, so the filter
+// does not lag behind rotations. The filtered gravity direction then drives
+// an inclination correction (accQuat). Output = accQuat ⊗ gyrQuat.
+//
+// Heading (yaw) is unobservable without a magnetometer: gyro bias must be
+// removed by the caller or yaw will drift.
 
 #include <cmath>
 #include <cstring>
 
 class BasicVQF {
 public:
-    // gyrTs: gyroscope sample period [s]
-    // accTs: accelerometer sample period [s] (pass -1 to use gyrTs)
-    // tauAcc: time constant [s] for accel LP filter (default 3 s)
-    explicit BasicVQF(double gyrTs, double accTs = -1.0, double tauAcc = 3.0)
-        : _gyrTs(gyrTs), _accTs(accTs < 0.0 ? gyrTs : accTs), _tauAcc(tauAcc),
-          _initialized(false)
-    {
-        _q[0] = 1.0; _q[1] = 0.0; _q[2] = 0.0; _q[3] = 0.0;
-        _accLP[0] = 0.0; _accLP[1] = 0.0; _accLP[2] = 1.0;
-    }
+  // gyrTs: sample period [s]; tauAcc: accel low-pass time constant [s]
+  explicit BasicVQF(double gyrTs, double tauAcc = 3.0)
+      : _ts(gyrTs), _tauAcc(tauAcc) {
+    filterCoeffs(tauAcc, gyrTs, _accLpB, _accLpA);
+    reset();
+  }
 
-    // gyr: angular velocity [rad/s]  (x, y, z)
-    // acc: specific force    [m/s²]  (x, y, z)
-    void update(const double gyr[3], const double acc[3]) {
-        // ── 1. Gyroscope integration ──────────────────────────────────────────
-        double gx = gyr[0], gy = gyr[1], gz = gyr[2];
-        double norm = std::sqrt(gx*gx + gy*gy + gz*gz);
-        if (norm > 1e-9) {
-            double half_angle = norm * _gyrTs * 0.5;
-            double s = std::sin(half_angle) / norm;
-            double dq[4] = { std::cos(half_angle), gx*s, gy*s, gz*s };
-            quatMul(_q, dq, _q);
-            quatNorm(_q);
-        }
+  void reset() {
+    _gyrQuat[0] = 1.0;
+    _gyrQuat[1] = _gyrQuat[2] = _gyrQuat[3] = 0.0;
+    std::memcpy(_accQuat, _gyrQuat, sizeof(_accQuat));
+    _accLpState[0] = NAN; // NaN = still averaging the first tauAcc seconds
+    _accLpState[1] = NAN;
+    _lastAccLp[0] = _lastAccLp[1] = _lastAccLp[2] = 0.0;
+  }
 
-        // ── 2. Accelerometer low-pass filter ─────────────────────────────────
-        double ax = acc[0], ay = acc[1], az = acc[2];
-        double anorm = std::sqrt(ax*ax + ay*ay + az*az);
-        if (anorm < 0.1) return;  // ignore near-zero or noise
-        ax /= anorm; ay /= anorm; az /= anorm;
+  // gyr: angular velocity [rad/s]; acc: specific force [m/s²] (body frame)
+  void update(const double gyr[3], const double acc[3]) {
+    updateGyr(gyr);
+    updateAcc(acc);
+  }
 
-        double alpha = 1.0 - std::exp(-_accTs / _tauAcc);
-        if (!_initialized) {
-            _accLP[0] = ax; _accLP[1] = ay; _accLP[2] = az;
-            _initialized = true;
-        } else {
-            _accLP[0] += alpha * (ax - _accLP[0]);
-            _accLP[1] += alpha * (ay - _accLP[1]);
-            _accLP[2] += alpha * (az - _accLP[2]);
-        }
-
-        // ── 3. Gravity prediction from current quaternion (body frame) ────────
-        double w = _q[0], qx = _q[1], qy = _q[2], qz = _q[3];
-        double vx = 2.0*(qx*qz - w*qy);
-        double vy = 2.0*(w*qx  + qy*qz);
-        double vz = w*w - qx*qx - qy*qy + qz*qz;
-
-        // ── 4. Error = cross product (measured × predicted) ───────────────────
-        double ex = _accLP[1]*vz - _accLP[2]*vy;
-        double ey = _accLP[2]*vx - _accLP[0]*vz;
-        double ez = _accLP[0]*vy - _accLP[1]*vx;
-
-        // ── 5. Correction quaternion (small-angle, first order) ───────────────
-        double k = alpha;  // correction gain tracks LP filter bandwidth
-        double cq[4] = { 1.0, k*ex*0.5, k*ey*0.5, k*ez*0.5 };
-        quatNorm(cq);
-        quatMul(_q, cq, _q);
-        quatNorm(_q);
-    }
-
-    // Output quaternion as [w, x, y, z] (rotation from Earth to body frame)
-    void getQuat6D(double out[4]) const {
-        std::memcpy(out, _q, 4 * sizeof(double));
-    }
+  // Orientation of the sensor relative to the Earth frame (z up), [w, x, y, z]
+  void getQuat6D(double out[4]) const { quatMul(_accQuat, _gyrQuat, out); }
 
 private:
-    double _gyrTs, _accTs, _tauAcc;
-    double _q[4];
-    double _accLP[3];
-    bool   _initialized;
+  double _ts, _tauAcc;
+  double _gyrQuat[4];
+  double _accQuat[4];
+  double _accLpB[3] = {}, _accLpA[2] = {};
+  // [0..5] filter state for 3 axes; while initialising, [1] holds the sample
+  // count and [2..4] the running sum.
+  double _accLpState[6];
+  double _lastAccLp[3];
 
-    static void quatMul(const double a[4], const double b[4], double out[4]) {
-        double tmp[4] = {
-            a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3],
-            a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
-            a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1],
-            a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]
-        };
-        std::memcpy(out, tmp, 4 * sizeof(double));
+  void updateGyr(const double gyr[3]) {
+    double n = std::sqrt(gyr[0] * gyr[0] + gyr[1] * gyr[1] + gyr[2] * gyr[2]);
+    if (n > 1e-9) {
+      double half = n * _ts * 0.5;
+      double s = std::sin(half) / n;
+      double dq[4] = {std::cos(half), gyr[0] * s, gyr[1] * s, gyr[2] * s};
+      quatMul(_gyrQuat, dq, _gyrQuat);
+      quatNorm(_gyrQuat);
     }
+  }
 
-    static void quatNorm(double q[4]) {
-        double n = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
-        if (n > 1e-10) { q[0]/=n; q[1]/=n; q[2]/=n; q[3]/=n; }
+  void updateAcc(const double acc[3]) {
+    if (acc[0] == 0.0 && acc[1] == 0.0 && acc[2] == 0.0)
+      return;
+
+    // Low-pass in the gyro-integrated (almost inertial) frame
+    double accI[3];
+    quatRotate(_gyrQuat, acc, accI);
+    filterVec(accI, _lastAccLp);
+
+    // Into the 6D Earth frame, then rotate so filtered gravity points along +z
+    double accE[3];
+    quatRotate(_accQuat, _lastAccLp, accE);
+    double n =
+        std::sqrt(accE[0] * accE[0] + accE[1] * accE[1] + accE[2] * accE[2]);
+    if (n < 1e-9)
+      return;
+    accE[0] /= n;
+    accE[1] /= n;
+    accE[2] /= n;
+
+    double corr[4];
+    double qw = std::sqrt((accE[2] + 1.0) / 2.0);
+    if (qw > 1e-6) {
+      corr[0] = qw;
+      corr[1] = 0.5 * accE[1] / qw;
+      corr[2] = -0.5 * accE[0] / qw;
+      corr[3] = 0.0;
+    } else { // correction ≈ 180°: pick an axis to avoid dividing by ~0
+      corr[0] = 0.0;
+      corr[1] = 1.0;
+      corr[2] = 0.0;
+      corr[3] = 0.0;
     }
+    quatMul(corr, _accQuat, _accQuat);
+    quatNorm(_accQuat);
+  }
+
+  // Second-order Butterworth low-pass, as in the reference implementation
+  static void filterCoeffs(double tau, double ts, double b[3], double a[2]) {
+    double fc = (M_SQRT2 / (2.0 * M_PI)) / tau;
+    double c = std::tan(M_PI * fc * ts);
+    double d = c * c + M_SQRT2 * c + 1.0;
+    b[0] = c * c / d;
+    b[1] = 2.0 * b[0];
+    b[2] = b[0];
+    a[0] = 2.0 * (c * c - 1.0) / d;
+    a[1] = (1.0 - M_SQRT2 * c + c * c) / d;
+  }
+
+  void filterVec(const double x[3], double out[3]) {
+    double *st = _accLpState;
+    if (std::isnan(st[0])) {
+      // Average the first tauAcc seconds, then start the filter in steady
+      // state at that mean so one noisy first sample can't skew it.
+      if (std::isnan(st[1])) {
+        st[1] = 0.0;
+        st[2] = st[3] = st[4] = 0.0;
+      }
+      st[1] += 1.0;
+      for (int i = 0; i < 3; i++) {
+        st[2 + i] += x[i];
+        out[i] = st[2 + i] / st[1];
+      }
+      if (st[1] * _ts >= _tauAcc) {
+        for (int i = 0; i < 3; i++) {
+          st[2 * i] = out[i] * (1.0 - _accLpB[0]);
+          st[2 * i + 1] = out[i] * (_accLpB[2] - _accLpA[1]);
+        }
+      }
+      return;
+    }
+    for (int i = 0; i < 3; i++) {
+      double *s = st + 2 * i;
+      double y = _accLpB[0] * x[i] + s[0];
+      s[0] = _accLpB[1] * x[i] - _accLpA[0] * y + s[1];
+      s[1] = _accLpB[2] * x[i] - _accLpA[1] * y;
+      out[i] = y;
+    }
+  }
+
+  static void quatRotate(const double q[4], const double v[3], double out[3]) {
+    double x = (1 - 2 * q[2] * q[2] - 2 * q[3] * q[3]) * v[0] +
+               2 * v[1] * (q[2] * q[1] - q[0] * q[3]) +
+               2 * v[2] * (q[0] * q[2] + q[3] * q[1]);
+    double y = 2 * v[0] * (q[0] * q[3] + q[2] * q[1]) +
+               v[1] * (1 - 2 * q[1] * q[1] - 2 * q[3] * q[3]) +
+               2 * v[2] * (q[2] * q[3] - q[1] * q[0]);
+    double z = 2 * v[0] * (q[3] * q[1] - q[0] * q[2]) +
+               2 * v[1] * (q[0] * q[1] + q[3] * q[2]) +
+               v[2] * (1 - 2 * q[1] * q[1] - 2 * q[2] * q[2]);
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+  }
+
+  static void quatMul(const double a[4], const double b[4], double out[4]) {
+    double tmp[4] = {a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+                     a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+                     a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+                     a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]};
+    std::memcpy(out, tmp, sizeof(tmp));
+  }
+
+  static void quatNorm(double q[4]) {
+    double n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    if (n > 1e-10) {
+      q[0] /= n;
+      q[1] /= n;
+      q[2] /= n;
+      q[3] /= n;
+    }
+  }
 };
