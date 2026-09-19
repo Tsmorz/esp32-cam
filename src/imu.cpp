@@ -1,8 +1,10 @@
 #include "imu.h"
 #include "basicvqf.hpp"
+#include "orientation_history.h"
 #include <Arduino.h>
 #include <Wire.h>
 #include <atomic>
+#include <esp_timer.h>
 
 // ── LSM6DSOX register map
 // ─────────────────────────────────────────────────────
@@ -33,6 +35,8 @@ static double _quat[4] = {1, 0, 0, 0};
 static std::atomic<uint32_t> _samples{0}, _errors{0};
 static std::atomic<bool> _calibrated{false};
 static portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
+// One entry per 104 Hz sample: ~2.4 s, longer than the slowest detection
+static OrientationHistory<256> _hist;
 
 // ── I2C helpers
 // ───────────────────────────────────────────────────────────────
@@ -71,7 +75,8 @@ static void imu_task(void *) {
       continue;
     }
     if (!(status & 0x02))
-      continue;                // no new sample since the last read
+      continue; // no new sample since the last read
+    const int64_t t_us = esp_timer_get_time();
     if (!rd(LSM_OUT, b, 12)) { // 6 gyro + 6 accel bytes
       _errors++;
       continue;
@@ -111,8 +116,10 @@ static void imu_task(void *) {
 
     double q[4];
     _vqf->getQuat6D(q);
+    const float qf[4] = {(float)q[0], (float)q[1], (float)q[2], (float)q[3]};
     portENTER_CRITICAL(&_mux);
     memcpy(_quat, q, sizeof(q));
+    _hist.push(t_us, qf);
     portEXIT_CRITICAL(&_mux);
   }
 }
@@ -144,6 +151,17 @@ void imu_get_quat(double quat[4]) {
   portENTER_CRITICAL(&_mux);
   memcpy(quat, _quat, sizeof(_quat));
   portEXIT_CRITICAL(&_mux);
+}
+
+bool imu_quat_at(int64_t t_us, float q[4]) {
+  OrientationSample a, b;
+  portENTER_CRITICAL(&_mux);
+  const bool ok = _hist.bracket(t_us, a, b);
+  portEXIT_CRITICAL(&_mux);
+  if (!ok)
+    return false;
+  orientation_interpolate(a, b, t_us, q);
+  return true;
 }
 
 const char *imu_state(uint32_t *samples, uint32_t *errors) {

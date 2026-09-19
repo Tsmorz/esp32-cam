@@ -1,0 +1,28 @@
+name: Set up PlatformIO
+description: Python, PlatformIO, Task, and a cache of the toolchains and libraries
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+
+    # ~1 GB of ESP32 toolchain + framework; keyed on platformio.ini, which pins
+    # the platform and library versions
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.platformio
+          .pio/libdeps
+        key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+        restore-keys: pio-${{ runner.os }}-
+
+    - name: Install PlatformIO
+      shell: bash
+      run: pip install platformio==6.1.19
+
+    - uses: arduino/setup-task@v3
+      with:
+        version: 3.x
+        repo-token: ${{ github.token }}

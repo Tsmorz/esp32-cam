@@ -176,13 +176,6 @@ a.btn{color:var(--text);text-decoration:none}
 .drop{border:1.5px dashed var(--border-strong);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
 .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
 .drop svg{width:26px;height:26px;color:var(--accent);margin-bottom:4px}
-.batt{display:inline-flex;align-items:center}
-.batt .shell{position:relative;width:24px;height:12px;border:1.5px solid currentColor;border-radius:3px;padding:1px}
-.batt .shell::after{content:"";position:absolute;right:-4px;top:3px;width:2px;height:4px;border-radius:0 1px 1px 0;background:currentColor}
-.batt .shell i{display:block;height:100%;border-radius:1px;background:currentColor}
-.battery-big{display:flex;align-items:center;gap:16px}
-.battery-big .batt .shell{width:54px;height:26px;border-width:2px;border-radius:6px;padding:2px}
-.battery-big .batt .shell::after{right:-6px;top:8px;width:3px;height:8px}
 
 /* ── Dialog + toasts ────────────────────────────────── */
 dialog{border:1px solid var(--border);border-radius:16px;background:var(--surface);color:var(--text);padding:0;width:min(400px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.45)}
@@ -239,7 +232,6 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4M7.5 8.5 12 4l4.5 4.5M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16.5 6.5l2 2M14.5 8.5l1.5 1.5"/></symbol>
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8.5M7 6.2a7.5 7.5 0 1 0 10 0"/></symbol>
-  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7" width="16.5" height="10" rx="2.5"/><path d="M21.5 10.5v3"/></symbol>
   <symbol id="i-temp" viewBox="0 0 24 24"><path d="M14.5 13.8V5a2.5 2.5 0 0 0-5 0v8.8a4.5 4.5 0 1 0 5 0Z"/><path d="M12 11v5.5"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
@@ -264,7 +256,6 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
     <div class="chips">
       <span class="chip hide-sm" id="chipWifi" title="WiFi"><svg class="i" style="width:15px;height:15px"><use href="#i-wifi"/></svg><b id="chipWifiText">—</b></span>
       <span class="chip hide-sm" id="chipTemp" title="Chip temperature"><svg class="i" style="width:15px;height:15px"><use href="#i-temp"/></svg><b id="chipTempText">—</b></span>
-      <span class="chip hide-sm" id="chipBatt" title="Battery"></span>
       <span class="chip" title="Connection to the camera"><span class="dot" id="connDot"></span><b id="connText">Connecting</b></span>
     </div>
   </div>
@@ -313,6 +304,9 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
             <div class="stat"><span>Detect</span><b id="detDetect">—</b></div>
           </div>
           <div class="row" style="margin-top:8px"><span class="lbl">Tag type<small>IDs 0–586. QR codes, ArUco and other AprilTag families (16h5, 25h9, 41h12…) are ignored.</small></span><b>AprilTag 36h11</b></div>
+          <div class="row"><label for="detRes">Detect at<small>While nobody watches the stream, the camera drops to this size so tags are found faster. The Live page uses the Camera page's size.</small></label>
+            <select id="detRes"><option value="0">Same as stream</option><option value="6">320 × 240</option><option value="10">640 × 480</option><option value="11">800 × 600</option></select></div>
+          <div class="row"><span class="lbl">Camera calibration<small id="calHint">Distances and pose use a rough lens estimate. Send your calibration to the board with <code>scripts/push_calibration.py</code>.</small></span><b id="calState">—</b></div>
           <div class="row"><label for="tagId">Printable tag<small id="tagHint">Print at 100 % scale on plain white paper and keep it flat.</small></label>
             <input type="number" id="tagId" min="0" max="586" value="0" aria-label="Tag ID"><a class="btn sm" id="tagOpen" href="/tag?id=0" target="_blank">Open</a></div>
           <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>Each detection takes one frame from the stream. The status LED stays lit while a tag is in view.</span></p>
@@ -438,13 +432,9 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 
 <!-- ═══ SYSTEM ═════════════════════════════════════════ -->
 <section class="page" id="page-system">
-  <div class="page-head"><div><h1>System</h1><p>Device health, power and maintenance.</p></div></div>
+  <div class="page-head"><div><h1>System</h1><p>Device health and maintenance.</p></div></div>
   <div class="grid2">
     <div class="stack">
-      <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-battery"/></svg></span><h2>Battery</h2></div>
-        <div class="card-b" id="battBody"></div>
-      </div>
       <div class="card">
         <div class="card-h"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><h2>Device</h2></div>
         <div class="card-b">
@@ -454,7 +444,8 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
             <dt>IMU</dt><dd id="sImu">—</dd>
             <dt>Chip temperature</dt><dd id="sTemp">—</dd>
             <dt>Uptime</dt><dd id="sUptime">—</dd>
-            <dt>Firmware built</dt><dd id="sBuild">—</dd>
+            <dt>Firmware</dt><dd id="sVersion">—</dd>
+            <dt>Built</dt><dd id="sBuild">—</dd>
           </dl>
           <div style="margin-top:14px" class="tiles">
             <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
@@ -597,10 +588,6 @@ const bars = rssi => { const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75
 const fmtUp = s => { const d = s / 86400 | 0, h = s / 3600 % 24 | 0, m = s / 60 % 60 | 0;
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60 | 0}s`; };
 const fmtBytes = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024 | 0) + ' KB';
-function battHTML(pct) {
-  const color = pct > 50 ? 'var(--ok)' : pct > 20 ? 'var(--warn)' : 'var(--bad)';
-  return `<span class="batt" style="color:${color}"><span class="shell"><i style="width:${Math.max(4, pct)}%"></i></span></span>`;
-}
 function setOnline(on) {
   online = on;
   $('#connDot').className = 'dot ' + (on ? 'ok' : 'bad');
@@ -612,9 +599,8 @@ async function pollStatus() {
   setTimeout(pollStatus, 2000);
 }
 function renderStatus() {
-  const w = S.wifi, b = S.battery;
+  const w = S.wifi;
   $('#chipWifiText').innerHTML = w.sta_ssid ? esc(w.sta_ssid) : 'Hotspot only';
-  $('#chipBatt').innerHTML = b.wired ? battHTML(b.percent) + `<b>${b.percent}%</b>` : icon('battery', 'width:16px;height:16px') + '<span>Not wired</span>';
   // Network page
   $('#nApSsid').textContent = w.ap_ssid;
   $('#nApIp').textContent = w.ap_ip;
@@ -632,15 +618,12 @@ function renderStatus() {
   $('#chipTempText').style.color = tLvl === 'ok' ? '' : `var(--${tLvl})`;
   $('#sTemp').innerHTML = `<span class="num">${t.toFixed(1)} °C</span> <span class="badge ${tLvl}">${{ok: 'Normal', warn: 'Warm', bad: 'Hot'}[tLvl]}</span>`;
   $('#sUptime').textContent = fmtUp(S.uptime);
+  $('#sVersion').textContent = S.version || '—';
   $('#sBuild').textContent = S.build;
   $('#sHeap').textContent = fmtBytes(S.heap);
   $('#sHeapBar').style.width = Math.min(100, S.heap / 327680 * 100) + '%';
   $('#sPsram').textContent = fmtBytes(S.psram);
   $('#sPsramBar').style.width = (S.psram / S.psram_total * 100) + '%';
-  $('#battBody').innerHTML = b.wired
-    ? `<div class="battery-big">${battHTML(b.percent)}<div><div class="big">${b.percent}%</div><div class="muted num">${b.voltage.toFixed(2)} V</div></div></div>`
-    : `<div class="empty" style="padding:6px 0 2px">${icon('battery')}<b>No battery sensor wired</b>
-       <span>This board doesn't connect the battery to any pin. Wire BAT+ → 100 kΩ → GPIO 10 → 100 kΩ → GND, then set <code>BAT_PIN 10</code> in config.h.</span></div>`;
   // Live page bits that come from status
   $('#detOn').checked = S.detect.enabled;
   const [dT, dS] = S.sensor === 'none' ? ['No camera', 'The camera failed to start.']
@@ -648,6 +631,12 @@ function renderStatus() {
     : ['No tags in view', 'Only AprilTag 36h11 markers are detected. Print one from the Detection card.'];
   $('#tagEmpty b').textContent = dT;
   $('#tagEmpty span').textContent = dS;
+  $('#calState').textContent = S.detect.calibrated ? 'Calibrated' : 'Estimate';
+  if (document.activeElement !== $('#detRes')) $('#detRes').value = S.detect.res ?? 0;
+  $('#calState').title = S.detect.calibration || '';
+  $('#calHint').innerHTML = S.detect.calibrated
+    ? `Using the intrinsics and lens distortion ${S.detect.calibration === 'stored' ? 'stored on this board' : 'compiled in from <code>src/calibration.h</code>'}.`
+    : 'Distances and pose use a rough lens estimate. Send your calibration to the board with <code>scripts/push_calibration.py</code>.';
   if (S.detect.tag_mm) $('#tagHint').textContent = `Print at 100 % scale on plain white paper and keep it flat. Distances assume the black square measures ${S.detect.tag_mm} mm.`;
   const af = S.af !== 'none';
   $('#btnFocus').hidden = !af;
@@ -687,7 +676,7 @@ $('#btnShot').onclick = async () => {
     const r = await fetch('/snapshot'); if (!r.ok) throw 0;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(await r.blob());
-    a.download = 'griplink-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+    a.download = 'esp32cam-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   } catch (_) { toast('Snapshot failed', 'bad'); }
 };
@@ -702,6 +691,17 @@ function fresh() {
   if (!det || det.age_ms < 0) return false;
   return det.age_ms < Math.max(1500, 2.5 * (det.decode_ms + det.detect_ms));
 }
+// Measured rate: processed frames (seq) per device second over the last ~2 s
+const rateWin = [];
+function detHz() {
+  if (!det || !det.seq) { rateWin.length = 0; return 0; }
+  const last = rateWin[rateWin.length - 1];
+  if (last && det.seq < last.seq) rateWin.length = 0; // reboot / re-enabled
+  if (!rateWin.length || det.seq !== rateWin[rateWin.length - 1].seq) rateWin.push({ seq: det.seq, us: det.now_us - det.age_ms * 1000 }); // publish time
+  while (rateWin.length > 2 && rateWin[rateWin.length - 1].us - rateWin[1].us > 2e6) rateWin.shift();
+  const a = rateWin[0], b = rateWin[rateWin.length - 1];
+  return b.us > a.us ? (b.seq - a.seq) / ((b.us - a.us) / 1e6) : 0;
+}
 function renderDet() {
   const tags = fresh() ? det.tags : [];
   $('#tagCount').textContent = tags.length;
@@ -712,14 +712,17 @@ function renderDet() {
     <div class="muted num" style="font-size:12px">pos ${sgn(tx)} ${sgn(ty)} ${sgn(tz)} m</div>
     <div class="muted num" style="font-size:12px">q ${q[0].toFixed(2)} ${sgn(q[1])} ${sgn(q[2])} ${sgn(q[3])}</div></div></li>`).join('');
   if (det && det.w) $('#resPill').textContent = `${det.w} × ${det.h}`;
-  const ms = det ? det.decode_ms + det.detect_ms : 0;
-  $('#detRate').textContent = ms && S?.detect.enabled ? (1000 / Math.max(ms, 200)).toFixed(1) + ' Hz' : '—';
+  $('#detRate').textContent = detHz() && S?.detect.enabled ? detHz().toFixed(1) + ' Hz' : '—';
   $('#detDecode').textContent = det?.decode_ms ? det.decode_ms + ' ms' : '—';
   $('#detDetect').textContent = det?.detect_ms ? det.detect_ms + ' ms' : '—';
 }
 $('#tagId').oninput = e => {
   const id = Math.min(586, Math.max(0, parseInt(e.target.value, 10) || 0));
   $('#tagOpen').href = '/tag?id=' + id;
+};
+$('#detRes').onchange = async e => {
+  try { await authed('/detector/set?res=' + e.target.value); toast('Detection size saved'); }
+  catch (err) { toast(err.message, 'bad'); pollStatus(); }
 };
 $('#detOn').onchange = async e => {
   const on = e.target.checked;
@@ -751,9 +754,14 @@ function drawOverlay() {
   if (page === 'live' && fresh() && det.tags.length) {
     // The image is letterboxed (object-fit: contain) — map source pixels into it
     const s = Math.min(W / det.w, H / det.h), ox = (W - det.w * s) / 2, oy = (H - det.h * s) / 2;
-    // Pose → canvas: pinhole projection with the detector's intrinsics
-    const f = det.f || det.w, cx = det.w / 2, cy = det.h / 2;
-    const proj = ([X, Y, Z]) => [ox + (f * X / Z + cx) * s, oy + (f * Y / Z + cy) * s];
+    // Pose → canvas with the detector's camera model (incl. lens distortion)
+    const K = det.cam || { fx: det.w, fy: det.w, cx: det.w / 2, cy: det.h / 2, dist: [0, 0, 0, 0, 0] };
+    const [k1, k2, p1, p2, k3] = K.dist;
+    const proj = ([X, Y, Z]) => {
+      const x = X / Z, y = Y / Z, r2 = x * x + y * y, rad = 1 + r2 * (k1 + r2 * (k2 + r2 * k3));
+      const xd = x * rad + 2 * p1 * x * y + p2 * (r2 + 2 * x * x), yd = y * rad + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
+      return [ox + (K.fx * xd + K.cx) * s, oy + (K.fy * yd + K.cy) * s];
+    };
     placed = [];
     for (const t of det.tags) drawTag(t, t.corners.map(([x, y]) => [ox + x * s, oy + y * s]), proj, W, H, d);
   }
@@ -917,7 +925,13 @@ $('#btnCamReset').onclick = async () => {
 $('#btnScan').onclick = async e => {
   const btn = e.currentTarget; btn.disabled = true; btn.lastChild.textContent = 'Scanning…';
   try {
-    const d = await getJSON('/wifi/scan', 15000);
+    // The board scans in the background: ask again until it has results
+    let d = await getJSON('/wifi/scan?refresh=1', 5000);
+    for (let i = 0; d.scanning && i < 15; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      d = await getJSON('/wifi/scan', 5000);
+    }
+    if (d.scanning) throw new Error('timeout');
     const nets = d.networks.filter(n => n.ssid).sort((a, b) => b.rssi - a.rssi);
     $('#netEmpty').hidden = nets.length > 0;
     if (!nets.length) $('#netEmpty').innerHTML = icon('wifi') + '<b>No networks found</b>';

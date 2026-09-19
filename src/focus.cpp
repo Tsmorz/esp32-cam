@@ -16,13 +16,23 @@ static int rd(int reg) { return _s->get_reg(_s, reg, 0xff); }
 
 // The AF MCU acknowledges a command by clearing CMD_ACK
 static bool command(uint8_t cmd) {
+  // The MCU ignores commands while it is still moving the lens (status
+  // 0x00–0x0F): wait for it to settle first (≤ 2 s)
+  for (int i = 0; i < 200; i++) {
+    const int st = rd(OV5640_CMD_FW_STATUS);
+    if (st == FW_STATUS_S_IDLE || st == FW_STATUS_S_FOCUSED || st == 0x20)
+      break;
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
   wr(OV5640_CMD_ACK, 0x01);
   wr(OV5640_CMD_MAIN, cmd);
-  for (int i = 0; i < 100; i++) { // ≤ 1 s
+  for (int i = 0; i < 300; i++) { // ≤ 3 s
     if (rd(OV5640_CMD_ACK) == 0x00)
       return true;
     vTaskDelay(pdMS_TO_TICKS(10));
   }
+  Serial.printf("[af] cmd 0x%02x not acked (ack=0x%02x status=0x%02x)\n", cmd,
+                rd(OV5640_CMD_ACK), rd(OV5640_CMD_FW_STATUS));
   return false;
 }
 

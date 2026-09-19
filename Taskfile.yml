@@ -2,13 +2,18 @@ version: '3'
 
 vars:
   ENV: firebeetle2_esp32s3
-  SOURCES: src/*.cpp src/*.h lib/*/*.h lib/*/*.hpp
+  SOURCES: src/*.cpp src/*.h lib/*/*.h lib/*/*.hpp test/*/*.cpp
 
 tasks:
   build:
     desc: "Compile firmware"
     cmds:
       - pio run -e {{.ENV}}
+
+  test:
+    desc: "Unit tests on this machine (camera model, tag pose) — no board needed"
+    cmds:
+      - pio test -e native
 
   flash:
     desc: "Flash firmware, then open serial monitor — Ctrl+C to exit"
@@ -23,23 +28,28 @@ tasks:
       - pio device monitor -e {{.ENV}}
 
   check:
-    desc: "Run PlatformIO static analysis / cppcheck"
+    desc: "Static analysis (cppcheck) — fails on HIGH or MEDIUM findings"
     cmds:
-      - pio check -e {{.ENV}} --skip-packages --fail-on-defect high
+      - pio check -e {{.ENV}} --skip-packages --fail-on-defect high --fail-on-defect medium
 
   format:
-    desc: "Format all firmware sources with clang-format"
+    desc: "Format all sources with clang-format"
     cmds:
       - clang-format -i {{.SOURCES}}
 
-  ci:
-    desc: "Run all CI stages locally: format, check, build"
+  format-check:
+    desc: "Fail if any source isn't clang-formatted"
     cmds:
       - |
-        set -e
         clang-format --dry-run --Werror {{.SOURCES}} || (echo "ERROR: run 'task format' and re-commit" && exit 1)
-        task check
-        task build
+
+  ci:
+    desc: "Run the CI jobs locally: format-check, check, test, build"
+    cmds:
+      - task: format-check
+      - task: check
+      - task: test
+      - task: build
 
   clean:
     desc: "Remove build artifacts (full rebuild next time)"

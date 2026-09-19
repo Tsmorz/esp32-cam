@@ -1,37 +1,21 @@
 #pragma once
+#include "detection_types.h"
+#include <esp_camera.h>
 #include <freertos/FreeRTOS.h>
 #include <stddef.h>
 #include <stdint.h>
-
-static constexpr int MAX_TAGS = 8;
 
 // TAG_SIZE_M: edge of the printed black square in metres (not the white
 // border around it). /tag prints at exactly this size.
 // Pose accuracy scales linearly with this — measure your tag and update.
 static constexpr double TAG_SIZE_M = 0.165;
 
-// Pose frames (AprilTag convention). Camera: x right, y down, z forward.
-// Tag: origin at its centre, x right, y down, z into the tag. q rotates tag →
-// camera, so a tag facing the camera upright is q = [1, 0, 0, 0].
-struct TagDetection {
-  int id;
-  float corners[4][2]; // [corner_idx][x/y] in source-frame pixels
-  double tx, ty, tz;   // tag centre in the camera frame, metres
-  float q[4];          // tag orientation in the camera frame, [w, x, y, z]
-};
-
-struct DetectionFrame {
-  uint32_t ms;       // millis() when published; 0 = nothing yet
-  int width, height; // source frame size (corner coordinate space)
-  float f;           // focal length in source pixels (principal point centred)
-  int count;
-  uint16_t decode_ms, detect_ms; // time spent on this frame
-  TagDetection tags[MAX_TAGS];
-};
-
 bool detector_init();  // allocate buffers + apriltag detector, self-test
 bool detector_ready(); // detector_init() succeeded
 void detector_start(BaseType_t core, UBaseType_t prio, uint32_t period_ms);
+// Hand a frame the stream is about to send to the detector, if it is waiting
+// for one. While a stream runs the detector takes its frames from here.
+void detector_offer(const camera_fb_t *fb);
 void detector_toggle();
 void detector_set_enabled(bool on);
 bool detector_enabled();
