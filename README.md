@@ -67,8 +67,8 @@ Control server, port **80**:
 | `GET /tag?id=N` | Printable tag36h11 page (black square = `TAG_SIZE_M`) |
 | `GET /wifi/scan[?refresh=1]` | Nearby networks. Never blocks: answers `{"scanning":true}` while a scan runs — ask again until it doesn't (`refresh=1` starts a new one) |
 | `GET /stream` | 302 redirect to `:81/stream` |
-| `GET /camera/set?var=&val=` 🔒 | `framesize`, `quality` (4–63), `brightness`/`contrast`/`saturation`/`sharpness`/`ae_level` (−2…2), `awb`, `aec`, `agc`, `hmirror`, `vflip` (0/1), `wb_mode` (0–4), `af` (0 infinity, 1 focus once, 2 continuous) |
-| `GET /detector/set?enabled=0\|1&res=N` 🔒 | Tag detection on/off; `res` = the `framesize` the camera drops to while nobody watches the stream (0 = same as the stream) |
+| `POST /camera/set?var=&val=` 🔒 | `framesize`, `quality` (4–63), `brightness`/`contrast`/`saturation`/`sharpness`/`ae_level` (−2…2), `awb`, `aec`, `agc`, `hmirror`, `vflip` (0/1), `wb_mode` (0–4), `af` (0 infinity, 1 focus once, 2 continuous) |
+| `POST /detector/set?enabled=0\|1&res=N` 🔒 | Tag detection on/off; `res` = the `framesize` the camera drops to while nobody watches the stream (0 = same as the stream) |
 | `POST /calibration` 🔒 | JSON body as above (`dist` optional); stored on the board. `DELETE /calibration` 🔒 forgets it |
 | `POST /wifi/connect` 🔒 | `{"ssid","pass"}` — joins and remembers the network |
 | `POST /ota` 🔒 | Raw `firmware.bin`; reboots on success |
@@ -206,12 +206,15 @@ src/
   orientation_history.h  IMU orientation ring buffer + lookup by time (host-tested)
   strbuf.h            appendf / json_esc
   settings.h/cpp      NVS namespaces, schema version, reset
-  camera.h/cpp        Camera init, settings + persistence, MJPEG handler, stream/detection size
+  camera.h/cpp        Camera init, settings + persistence, MJPEG handler
+  camera_profile.h/cpp  Stream vs. detection size, viewers, the sensor lock
   focus.h/cpp         OV5640 autofocus firmware upload and control
   detector.h/cpp      AprilTag detection task and pose estimation
   imu.h/cpp           LSM6DSOX driver + VQF sampling task
   led.h/cpp           Status LED task
   push.h/cpp          UDP push of detections to subscribers
+  push_message.h      Subscription datagram parsing (host-tested)
+  system.h/cpp        Deferred restart
   board.h/cpp         I²C bus + AXP313A power
   wifi_mgr.h/cpp      AP+STA, saved network, mDNS, async scan
   http_server.h/cpp   Both HTTP servers: every route

@@ -721,12 +721,12 @@ $('#tagId').oninput = e => {
   $('#tagOpen').href = '/tag?id=' + id;
 };
 $('#detRes').onchange = async e => {
-  try { await authed('/detector/set?res=' + e.target.value); toast('Detection size saved'); }
+  try { await authed('/detector/set?res=' + e.target.value, {method: 'POST'}); toast('Detection size saved'); }
   catch (err) { toast(err.message, 'bad'); pollStatus(); }
 };
 $('#detOn').onchange = async e => {
   const on = e.target.checked;
-  try { await authed('/detector/set?enabled=' + (on ? 1 : 0)); toast(on ? 'Detection on' : 'Detection off'); }
+  try { await authed('/detector/set?enabled=' + (on ? 1 : 0), {method: 'POST'}); toast(on ? 'Detection on' : 'Detection off'); }
   catch (err) { e.target.checked = !on; toast(err.message, 'bad'); }
 };
 
@@ -898,7 +898,7 @@ function renderAf(mode, state) {
 }
 async function setCam(v, val, okMsg = 'Saved') {
   try {
-    await authed(`/camera/set?var=${v}&val=${val}`);
+    await authed(`/camera/set?var=${v}&val=${val}`, {method: 'POST'});
     toast(okMsg);
     if (v === 'af' && C) { C.af = val === 1 ? C.af : val; setTimeout(loadCamera, 900); }
     return true;

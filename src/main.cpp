@@ -1,6 +1,7 @@
 #include "board.h"
 #include "calibration_store.h"
 #include "camera.h"
+#include "camera_profile.h"
 #include "config.h"
 #include "detector.h"
 #include "focus.h"
@@ -10,6 +11,7 @@
 #include "ota_health.h"
 #include "push.h"
 #include "settings.h"
+#include "system.h"
 #include "wifi_mgr.h"
 #include <Arduino.h>
 #include <WiFi.h>
@@ -67,6 +69,8 @@ void setup() {
 }
 
 void loop() {
+  focus_tick(); // autofocus mode changes are carried out here, see focus.h
+  system_tick();
   if (Serial.available()) {
     char c = Serial.read();
     if (c == '?')

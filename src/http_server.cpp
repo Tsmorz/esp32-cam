@@ -2,6 +2,7 @@
 #include "calibration_json.h"
 #include "calibration_store.h"
 #include "camera.h"
+#include "camera_profile.h"
 #include "config.h"
 #include "detections_json.h"
 #include "detector.h"
@@ -15,6 +16,7 @@
 #include "push.h"
 #include "settings.h"
 #include "strbuf.h"
+#include "system.h"
 #include "wifi_mgr.h"
 #include <Arduino.h>
 #include <WiFi.h>
@@ -68,7 +70,6 @@ static esp_err_t pose_handler(httpd_req_t *req) {
                      q[0], q[1], q[2], q[3], state, (unsigned long)n,
                      (unsigned long)err);
   httpd_resp_set_type(req, "application/json");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_send(req, buf, len);
   return ESP_OK;
 }
@@ -83,7 +84,6 @@ static esp_err_t snapshot_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   httpd_resp_set_type(req, "image/jpeg");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   esp_err_t res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
   camera_fb_return_at_stream_size(fb);
   return res;
@@ -199,7 +199,6 @@ static esp_err_t status_handler(httpd_req_t *req) {
       sta ? WiFi.RSSI() : 0, saved);
 
   httpd_resp_set_type(req, "application/json");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_send(req, buf, pos);
   return ESP_OK;
 }
@@ -210,7 +209,6 @@ static esp_err_t camera_status_handler(httpd_req_t *req) {
   char buf[640];
   size_t len = camera_status_json(buf, sizeof(buf));
   httpd_resp_set_type(req, "application/json");
-  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_send(req, buf, len);
   return ESP_OK;
 }
@@ -221,8 +219,7 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL;
   httpd_resp_sendstr(req, "OK");
-  delay(300);
-  esp_restart();
+  system_restart_in(300);
   return ESP_OK;
 }
 
@@ -231,8 +228,7 @@ static esp_err_t camera_reset_handler(httpd_req_t *req) {
     return ESP_FAIL;
   camera_reset_settings(); // defaults apply on the next boot
   httpd_resp_sendstr(req, "OK");
-  delay(300);
-  esp_restart();
+  system_restart_in(300);
   return ESP_OK;
 }
 
@@ -250,8 +246,7 @@ static esp_err_t settings_reset_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   httpd_resp_sendstr(req, "OK");
-  delay(300);
-  esp_restart(); // settings are read at boot
+  system_restart_in(300); // settings are read at boot
   return ESP_OK;
 }
 
@@ -364,8 +359,7 @@ static esp_err_t ota_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   httpd_resp_sendstr(req, "OK");
-  delay(500);
-  esp_restart();
+  system_restart_in(500);
   return ESP_OK;
 }
 
@@ -490,14 +484,14 @@ void http_start() {
       {"/wifi/scan", HTTP_GET, wifi_scan_handler, nullptr},
       {"/wifi/connect", HTTP_POST, wifi_connect_handler, nullptr},
       {"/ota", HTTP_POST, ota_handler, nullptr},
-      {"/camera/set", HTTP_GET, camera_set_handler, nullptr},
+      {"/camera/set", HTTP_POST, camera_set_handler, nullptr},
       {"/snapshot", HTTP_GET, snapshot_handler, nullptr},
       {"/debug/gray.bmp", HTTP_GET, gray_handler, nullptr},
       {"/tag", HTTP_GET, tag_handler, nullptr},
       {"/calibration", HTTP_GET, calibration_get_handler, nullptr},
       {"/calibration", HTTP_POST, calibration_post_handler, nullptr},
       {"/calibration", HTTP_DELETE, calibration_delete_handler, nullptr},
-      {"/detector/set", HTTP_GET, detector_set_handler, nullptr},
+      {"/detector/set", HTTP_POST, detector_set_handler, nullptr},
       {"/status", HTTP_GET, status_handler, nullptr},
       {"/camera/status", HTTP_GET, camera_status_handler, nullptr},
       {"/camera/reset", HTTP_POST, camera_reset_handler, nullptr},
