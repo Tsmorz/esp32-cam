@@ -155,9 +155,11 @@ static esp_err_t index_handler(httpd_req_t *req) {
 // ── /status — everything the dashboard's header and System page show
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t status_handler(httpd_req_t *req) {
-  char buf[1400];
+  char buf[1536];
   size_t pos = 0;
+  const sensor_t *sen = esp_camera_sensor_get();
   const DetectionFrame f = detector_latest();
+  const DetectorTuning tune = detector_tuning();
   uint32_t imu_n, imu_err;
   const char *imu = imu_state(&imu_n, &imu_err);
   const bool sta = WiFi.status() == WL_CONNECTED;
@@ -170,12 +172,14 @@ static esp_err_t status_handler(httpd_req_t *req) {
           "{\"uptime\":%lu,\"version\":\"%s\",\"build\":\"%s "
           "%s\",\"heap\":%u,\"psram\":%u,"
           "\"psram_total\":%u,\"temp_c\":%.1f,\"stream_port\":%d,\"auth\":%s,"
+          "\"mirror\":%s,"
           "\"sensor\":\"%s\",\"af\":\"%s\",\"hostname\":\"%s\","
           "\"schema\":%d,\"ota_pending\":%s,",
           (unsigned long)(millis() / 1000), FW_VERSION, __DATE__, __TIME__,
           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
           (unsigned)ESP.getPsramSize(), temperatureRead(), STREAM_PORT,
-          auth_configured() ? "true" : "false", camera_sensor_name(),
+          auth_configured() ? "true" : "false",
+          sen && sen->status.hmirror ? "true" : "false", camera_sensor_name(),
           focus_state(), HOSTNAME, settings_schema(),
           ota_health_pending() ? "true" : "false");
   appendf(buf, sizeof(buf), pos,
@@ -186,13 +190,16 @@ static esp_err_t status_handler(httpd_req_t *req) {
           "\"calibrated\":%s,\"calibration\":\"%s\",\"res\":%d,"
           "\"push\":{\"port\":%d,\"subscribers\":%d},\"decode_ms\":%u,"
           "\"detect_ms\":%u,"
-          "\"age_ms\":%ld,\"count\":%d},",
+          "\"age_ms\":%ld,\"count\":%d,"
+          "\"tuning\":{\"decimate\":%.1f,\"diff\":%d,\"cluster\":%d,"
+          "\"refine\":%s}},",
           detector_ready() ? "true" : "false",
           detector_enabled() ? "true" : "false", TAG_SIZE_M * 1000,
           camera_calibrated(calibration_get()) ? "true" : "false",
           calibration_source(), camera_detect_size(), PUSH_PORT,
           push_subscribers(), f.decode_ms, f.detect_ms,
-          f.ms ? (long)(millis() - f.ms) : -1L, f.count);
+          f.ms ? (long)(millis() - f.ms) : -1L, f.count, tune.decimate,
+          tune.min_diff, tune.min_cluster, tune.refine ? "true" : "false");
   appendf(
       buf, sizeof(buf), pos,
       "\"wifi\":{\"ap_ssid\":\"%s\",\"ap_ip\":\"%s\",\"ap_clients\":%d,"
@@ -456,9 +463,11 @@ static esp_err_t calibration_delete_handler(httpd_req_t *req) {
 static esp_err_t detector_set_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL;
-  char qs[48] = {}, val[8] = {};
+  char qs[112] = {}, val[8] = {};
   if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing enabled or res");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Missing enabled, res, decimate, diff, cluster or "
+                        "refine");
     return ESP_FAIL;
   }
   bool any = false;
@@ -476,8 +485,30 @@ static esp_err_t detector_set_handler(httpd_req_t *req) {
     }
     any = true;
   }
+  // How hard to look: any subset of decimate (1|1.5|2|3|4), diff, cluster,
+  // refine (0|1); the rest stay as they are
+  DetectorTuning t = detector_tuning();
+  bool tuned = false;
+  if (httpd_query_key_value(qs, "decimate", val, sizeof(val)) == ESP_OK)
+    t.decimate = atof(val), tuned = true;
+  if (httpd_query_key_value(qs, "diff", val, sizeof(val)) == ESP_OK)
+    t.min_diff = atoi(val), tuned = true;
+  if (httpd_query_key_value(qs, "cluster", val, sizeof(val)) == ESP_OK)
+    t.min_cluster = atoi(val), tuned = true;
+  if (httpd_query_key_value(qs, "refine", val, sizeof(val)) == ESP_OK)
+    t.refine = atoi(val) != 0, tuned = true;
+  if (tuned) {
+    if (!detector_set_tuning(t)) {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                          "decimate 1|1.5|2|3|4, diff 1-100, cluster 3-100");
+      return ESP_FAIL;
+    }
+    any = true;
+  }
   if (!any) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing enabled or res");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Missing enabled, res, decimate, diff, cluster or "
+                        "refine");
     return ESP_FAIL;
   }
   httpd_resp_sendstr(req, "OK");

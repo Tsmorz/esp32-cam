@@ -19,6 +19,23 @@ void detector_offer(const camera_fb_t *fb);
 void detector_toggle();
 void detector_set_enabled(bool on);
 bool detector_enabled();
+
+// How hard the detector looks, trading range and recall for speed. Persisted
+// (NVS `det`) and applied between frames. Detection time is dominated by
+// apriltag's quad search, which scales with the decimated image and with how
+// many edge candidates a busy scene produces.
+struct DetectorTuning {
+  float decimate; // quad search runs at 1/decimate size: 1, 1.5, 2, 3 or 4
+  int min_diff;   // ignore regions with less black/white contrast (grey levels)
+  int min_cluster; // ignore edge clusters shorter than this (pixels)
+  bool refine;     // refine quad edges at full resolution
+};
+// Measured on the board at 320×240 (see README): decimate 4 halves the latency
+// of decimate 2 at the cost of range (tag ≥ 24 px across instead of ≥ 16)
+static constexpr DetectorTuning DETECTOR_TUNING_DEFAULT = {4.0f, 20, 5, true};
+DetectorTuning detector_tuning();
+// false if a value is out of range; nothing changes then
+bool detector_set_tuning(const DetectorTuning &t, bool persist = true);
 DetectionFrame detector_latest(); // thread-safe copy
 // Last grayscale image the detector ran on, as an 8-bit BMP (caller frees)
 size_t detector_gray_bmp(uint8_t **out);

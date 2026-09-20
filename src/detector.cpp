@@ -4,8 +4,10 @@
 #include "esp_jpeg_dec.h"
 #include "imu.h"
 #include "push.h"
+#include "settings.h"
 #include "tag_pose.h" // detector settings, pose maths; intrinsics: calibration_store.h
 #include <Arduino.h>
+#include <Preferences.h>
 #include <esp_camera.h>
 #include <esp_heap_caps.h>
 #include <esp_pthread.h>
@@ -41,6 +43,52 @@ static portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool _enabled = true;
 static bool _ready = false; // init and self-test passed
 static uint32_t _period_ms = 200;
+static DetectorTuning _tuning = DETECTOR_TUNING_DEFAULT; // under _mux
+
+DetectorTuning detector_tuning() {
+  portENTER_CRITICAL(&_mux);
+  const DetectorTuning t = _tuning;
+  portEXIT_CRITICAL(&_mux);
+  return t;
+}
+
+static bool tuning_valid(const DetectorTuning &t) {
+  const float d = t.decimate;
+  return (d == 1.0f || d == 1.5f || d == 2.0f || d == 3.0f || d == 4.0f) &&
+         t.min_diff >= 1 && t.min_diff <= 100 && t.min_cluster >= 3 &&
+         t.min_cluster <= 100;
+}
+
+bool detector_set_tuning(const DetectorTuning &t, bool persist) {
+  if (!tuning_valid(t))
+    return false;
+  portENTER_CRITICAL(&_mux);
+  _tuning = t;
+  portEXIT_CRITICAL(&_mux);
+  if (persist) {
+    Preferences prefs;
+    prefs.begin(settings::DETECT, false);
+    prefs.putInt("dec10", (int)(t.decimate * 10 + 0.5f));
+    prefs.putInt("diff", t.min_diff);
+    prefs.putInt("cluster", t.min_cluster);
+    prefs.putBool("refine", t.refine);
+    prefs.end();
+  }
+  Serial.printf("[detect] tuning: decimate %.1f, min_diff %d, min_cluster %d, "
+                "refine %d\n",
+                t.decimate, t.min_diff, t.min_cluster, (int)t.refine);
+  return true;
+}
+
+// Between frames, on the detector task: the apriltag detector must not change
+// while it runs
+static void apply_tuning() {
+  const DetectorTuning t = detector_tuning();
+  _detector->quad_decimate = t.decimate;
+  _detector->qtp.min_white_black_diff = t.min_diff;
+  _detector->qtp.min_cluster_pixels = t.min_cluster;
+  _detector->refine_edges = t.refine;
+}
 static void publish(const DetectionFrame &f) {
   portENTER_CRITICAL(&_mux);
   _latest = f;
@@ -78,6 +126,17 @@ bool detector_init() {
     return false;
   }
   _ready = true;
+  Preferences prefs; // saved tuning, after the self-test ran on the defaults
+  if (prefs.begin(settings::DETECT, true)) {
+    const DetectorTuning d = DETECTOR_TUNING_DEFAULT;
+    const DetectorTuning t = {prefs.getInt("dec10", (int)(d.decimate * 10)) /
+                                  10.0f,
+                              prefs.getInt("diff", d.min_diff),
+                              prefs.getInt("cluster", d.min_cluster),
+                              prefs.getBool("refine", d.refine)};
+    prefs.end();
+    detector_set_tuning(t, false);
+  }
   Serial.printf("[detect] AprilTag (tag36h11) ready, self-test %lu ms\n",
                 (unsigned long)(millis() - t0));
   return true;
@@ -161,6 +220,7 @@ static void run(const uint8_t *jpeg, size_t len, int w, int h, int64_t t_us) {
   const int dw = w / div, dh = h / div;
   const uint32_t t0 = millis();
 
+  apply_tuning();
   xSemaphoreTake(_gray_lock, portMAX_DELAY);
   const bool decoded = decode_gray(jpeg, len, w, h, div);
   if (decoded) {

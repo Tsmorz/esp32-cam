@@ -150,6 +150,18 @@ Only **AprilTag 36h11** markers are detected (IDs 0–586). QR codes, ArUco mark
   | 800×600 | 400×300 | 70–97 ms | 60–140 ms | 13 ms | 4–6.5 Hz | ~9 fps |
 
   The live rate is the lower of the two last columns. The OV5640's 1:1 mode makes 240×240 the slowest resolution to capture (9 fps, independent of exposure), so **320×240 is the fastest setting for detection**. Over a weak WiFi link the stream itself may send fewer frames (11 fps at 320×240 at −85 dBm), and then detection runs at the stream's rate. Detect time grows with how busy the scene is; the cap is `DETECT_PERIOD_MS` (30 Hz) in `src/config.h`. Smaller images detect tags at shorter range; range scales with the width the detector sees. In a clean synthetic test the smallest readable tag was 12 px across — about 4.4 m for a 165 mm tag at 320×240 and 5.5 m at 400×300 — real blur, noise and JPEG artefacts will cut that
+- **Latency and rate on the board** (320×240, scene with no tag, tag-free frames so pose time is excluded; median capture → UDP send over WiFi at −60 dBm, nobody watching):
+
+  | Setting | Detect | Latency | Rate |
+  |---------|--------|---------|------|
+  | 640×480, JPEG quality 4 (before) | — | 285 ms | 5.3 Hz |
+  | 320×240, decimate 2 (old default) | 87 ms | 167 ms | 10 Hz |
+  | decimate 3 | 51 ms | 133 ms | 15 Hz |
+  | **decimate 4 (default)** | 37 ms | **114 ms** | **20 Hz** (the camera's limit at 320×240) |
+  | decimate 4, no edge refinement | 32 ms | 90 ms | 22 Hz (less precise corners: not the default) |
+
+  Decode is ~10 ms at 320×240. Frame size matters most (640×480 → 245 ms, 1280×720 → 405 ms at quality 12), JPEG quality a little (quality 4 → 12 → 20 at 640×480: 285 → 245 → 222 ms). The contrast (`diff`) and cluster thresholds barely change the time on the board (87 → 78 ms), unlike on a PC. The rest of the latency is the camera: a frame is only complete one frame time after its capture starts (50 ms at 20 fps), plus waiting for the detector.
+- **Tuning** (`POST /detector/set`, 🔒, any subset, saved in flash): `decimate` (1, 1.5, 2, 3, 4), `diff` (1–100), `cluster` (3–100), `refine` (0/1); `/status.detect.tuning` shows what is set. Higher decimate is faster but needs a bigger tag in the image: on a PC with synthetic tags at 320×240, decimate 2 found tags ≥ 16 px across, decimate 3 and 4 ≥ 24 px. Real blur and noise will cut that, so test with your tag at your distance
 - Frames are decoded straight to grayscale (Espressif's SIMD `esp_new_jpeg`, luma only) at the smallest 1/2ⁿ scale that fits 400×300 (SVGA → 400×300); AprilTag finds quads on a 2× decimated copy and reads the bits at 400×300
 - apriltag is patched at build time for the ESP32-S3, whose FPU has no double precision: quad fitting, edge refinement and pose run in float (`scripts/apriltag_manifest.py`, `src/tag_pose.h`). Corners and poses match the unpatched library (unit test)
 - Tags only decode in a non-mirrored image — if text in the feed reads backwards, turn on **Mirror**
@@ -246,6 +258,8 @@ lib/
 | `task test` | Unit tests on your computer, with the real apriltag library — no board | Unit tests |
 | `task build` | Compile the firmware | Build firmware |
 | `task ci` | All four, in that order | — |
+| `task smoke` | Check the running board over the network: routes, token, `/detections` timestamps and latency, UDP push (`-- -H <ip> --token <t>` for options) | — |
+| `task ota-rollback-test` | OTA a deliberately crashing image and check the board rolls back to the old one | — |
 
 `.github/workflows/ci.yml` runs Format, Static analysis, Unit tests and Build in parallel on every push and pull request, each by calling the same `task` command. Build uploads `firmware.bin` and `firmware.factory.bin` as a workflow artifact and writes the RAM/flash usage to the run summary.
 

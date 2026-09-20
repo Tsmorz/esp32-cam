@@ -298,8 +298,9 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
         <div class="card-h"><span class="ic"><svg class="i"><use href="#i-gauge"/></svg></span><h2>Detection</h2>
           <span class="sub"><label class="sw" title="Tag detection on/off"><input type="checkbox" id="detOn" aria-label="Tag detection"></label></span></div>
         <div class="card-b">
-          <div class="stats">
+          <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">
             <div class="stat"><span>Rate</span><b id="detRate">—</b></div>
+            <div class="stat" title="From the camera capturing the frame to the result being ready on the board (excludes the network and this page)"><span>Latency</span><b id="detLat">—</b></div>
             <div class="stat"><span>Decode</span><b id="detDecode">—</b></div>
             <div class="stat"><span>Detect</span><b id="detDetect">—</b></div>
           </div>
@@ -364,7 +365,7 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
       <div class="card">
         <div class="card-h"><span class="ic"><svg class="i"><use href="#i-flip"/></svg></span><h2>Orientation</h2></div>
         <div class="card-b">
-          <div class="row"><label for="c-hmirror">Mirror<small>Flip left ↔ right</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
+          <div class="row"><label for="c-hmirror">Mirror<small>Flip left ↔ right. Tags do not decode in a mirrored image, so leave it off for detection.</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
           <div class="row"><label for="c-vflip">Flip<small>Flip top ↕ bottom</small></label><span class="sw"><input type="checkbox" id="c-vflip" data-var="vflip"></span></div>
           <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>AprilTags can't be read in a mirrored image. If text in the feed reads backwards, turn on Mirror.</span></p>
         </div>
@@ -647,6 +648,7 @@ function renderStatus() {
   $('#detOn').checked = S.detect.enabled;
   const [dT, dS] = S.sensor === 'none' ? ['No camera', 'The camera failed to start.']
     : S.detect.ready === false ? ['Detector failed to start', 'Its self-test failed at boot. See the serial log.']
+    : S.mirror ? ['No tags in view', "Mirror is on, and tags don't decode in a mirrored image. Turn it off on the Camera page."]
     : ['No tags in view', 'Only AprilTag 36h11 markers are detected. Print one from the Detection card.'];
   $('#tagEmpty b').textContent = dT;
   $('#tagEmpty span').textContent = dS;
@@ -732,6 +734,11 @@ function renderDet() {
     <div class="muted num" style="font-size:12px">q ${q[0].toFixed(2)} ${sgn(q[1])} ${sgn(q[2])} ${sgn(q[3])}</div></div></li>`).join('');
   if (det && det.w) $('#resPill').textContent = `${det.w} × ${det.h}`;
   $('#detRate').textContent = detHz() && S?.detect.enabled ? detHz().toFixed(1) + ' Hz' : '—';
+  // Capture → result: the frame's age when this reply was built, minus how long
+  // ago the result was published. Both on the board's clock. ~0 or negative
+  // means the capture time was unavailable (the board fell back to grab time).
+  const lat = det && det.seq && det.age_ms >= 0 ? (det.now_us - det.t_us) / 1000 - det.age_ms : 0;
+  $('#detLat').textContent = lat > 0 && S?.detect.enabled ? Math.round(lat) + ' ms' : '—';
   $('#detDecode').textContent = det?.decode_ms ? det.decode_ms + ' ms' : '—';
   $('#detDetect').textContent = det?.detect_ms ? det.detect_ms + ' ms' : '—';
 }

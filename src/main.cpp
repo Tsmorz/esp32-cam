@@ -77,6 +77,13 @@ void setup() {
 }
 
 void loop() {
+#ifdef TEST_CRASH_AFTER_BOOT // scripts/test_ota_rollback.py: a deliberately bad
+                             // image
+  if (millis() > OTA_CONFIRM_MS - 2000) {
+    Serial.println("[test] crashing on purpose");
+    abort();
+  }
+#endif
   focus_tick(); // autofocus mode changes are carried out here, see focus.h
   system_tick();
   if (Serial.available()) {

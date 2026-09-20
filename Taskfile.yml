@@ -30,6 +30,16 @@ tasks:
       - pio pkg install -e native
       - echo "Ready. Next{{":"}} task ci"
 
+  smoke:
+    desc: "Check the running board over the network (after an OTA). Pass options after --, e.g. task smoke -- -H 192.168.1.50"
+    cmds:
+      - python3 scripts/smoke_test.py {{.CLI_ARGS}}
+
+  ota-rollback-test:
+    desc: "Flash a deliberately crashing image over OTA and check the board rolls back. Options after --"
+    cmds:
+      - python3 scripts/test_ota_rollback.py {{.CLI_ARGS}}
+
   build:
     desc: "Compile firmware"
     cmds:

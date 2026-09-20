@@ -53,7 +53,8 @@ bool camera_init() {
   config.jpeg_quality = 12;
   config.fb_count = 2;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.grab_mode =
+      CAM_GRAB_LATEST ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
 
   camera_profile_init();
   esp_err_t err = esp_camera_init(&config);

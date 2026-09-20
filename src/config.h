@@ -61,6 +61,12 @@
 // ── Status LED ───────────────────────────────────────────────────────────────
 #define LED_PIN 21 // FireBeetle 2 user LED (LED_BUILTIN)
 
+// Which frame the camera driver hands out when several are queued. Latest
+// drops the older ones: the stream and the detector see the newest frame, so
+// lag stays near one frame interval, at the price of occasionally skipping one.
+// 0 = every frame in order (up to fb_count-1 frames of extra lag).
+#define CAM_GRAB_LATEST 1
+
 // ── FireBeetle 2 ESP32-S3 DVP camera pins ────────────────────────────────────
 // SCCB (SIOD/SIOC) is the shared I²C bus above.
 #define CAM_PIN_PWDN -1
