@@ -4,161 +4,236 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
-<title>GripLink Camera</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234da3ff'/%3E%3Ccircle cx='16' cy='16' r='5' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E">
+<title>Wifi-Camera</title>
+<script>
+// The saved theme before first paint, so the other palette never flashes.
+// Without one the CSS follows the OS (prefers-color-scheme).
+try {
+  var t = localStorage.getItem('theme');
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23131417'/%3E%3Cg fill='none' stroke='%23ff3d8b' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M5 11V6.5A1.5 1.5 0 0 1 6.5 5H11M21 5h4.5A1.5 1.5 0 0 1 27 6.5V11M27 21v4.5a1.5 1.5 0 0 1-1.5 1.5H21M11 27H6.5A1.5 1.5 0 0 1 5 25.5V21'/%3E%3Crect x='11.5' y='11.5' width='9' height='9' rx='.5'/%3E%3C/g%3E%3C/svg%3E">
 <style>
+/* Viewfinder. Graphite "darkroom" ink (paper "contact sheet" in light), one
+   signal colour — focus-peaking magenta — crop marks on the video, numbers in
+   monospace like a camera's top display. System fonts only: on the hotspot
+   there is no internet.
+
+   Dark is the base. Light applies by OS preference unless the header toggle
+   chose dark, or by the toggle (data-theme) — so its tokens appear twice. */
 :root{
-  --bg:#0b0d11;--surface:#12151b;--surface-2:#181c24;--raised:#1f2430;
-  --border:#252b37;--border-strong:#323a4a;
-  --text:#e7eaf0;--muted:#8a93a5;--faint:#5b6475;
-  --accent:#4da3ff;--accent-soft:rgba(77,163,255,.14);--on-accent:#fff;
-  --ok:#34d399;--ok-soft:rgba(52,211,153,.14);
-  --warn:#fbbf24;--warn-soft:rgba(251,191,36,.14);
-  --bad:#f87171;--bad-soft:rgba(248,113,113,.14);
-  --tag:#22d3ee;
-  --radius:14px;--radius-sm:9px;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.18);
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+  --bg:#0c0d0f;--surface:#131417;--surface-2:#18191d;--raised:#202126;
+  --border:#24262b;--border-strong:#33353b;
+  --text:#ecedef;--muted:#8e9198;--faint:#5c5f66;
+  --accent:#ff3d8b;--accent-ink:#ff74ab;--accent-soft:rgba(255,61,139,.13);--on-accent:#1c0610;
+  --ok:#5bd69a;--ok-soft:rgba(91,214,154,.12);
+  --warn:#f2b84b;--warn-soft:rgba(242,184,75,.12);
+  --bad:#ff6b5b;--bad-soft:rgba(255,107,91,.12);
+  --radius:6px;--radius-sm:5px;
+  --pop:0 18px 50px rgba(0,0,0,.5);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
-@media (prefers-color-scheme:light){:root{
-  --bg:#f4f6f9;--surface:#fff;--surface-2:#f7f8fb;--raised:#eef1f5;
-  --border:#e3e7ee;--border-strong:#cfd5df;
-  --text:#111827;--muted:#5f6b7d;--faint:#98a2b3;
-  --accent:#2563eb;--accent-soft:rgba(37,99,235,.1);
-  --ok:#059669;--ok-soft:rgba(5,150,105,.1);
-  --warn:#b45309;--warn-soft:rgba(180,83,9,.1);
-  --bad:#dc2626;--bad-soft:rgba(220,38,38,.1);
-  --tag:#0891b2;
-  --shadow:0 1px 2px rgba(16,24,40,.06),0 6px 16px rgba(16,24,40,.06);
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){
+  color-scheme:light;
+  --bg:#eeeeeb;--surface:#fbfbf9;--surface-2:#f4f4f1;--raised:#e8e8e4;
+  --border:#dcdcd6;--border-strong:#c4c4bd;
+  --text:#161616;--muted:#5d5d58;--faint:#9a9a93;
+  --accent:#d0216b;--accent-ink:#b81a5c;--accent-soft:rgba(208,33,107,.09);--on-accent:#fff;
+  --ok:#16855a;--ok-soft:rgba(22,133,90,.1);
+  --warn:#9a6200;--warn-soft:rgba(154,98,0,.1);
+  --bad:#c62b1e;--bad-soft:rgba(198,43,30,.09);
+  --pop:0 18px 50px rgba(30,30,20,.18);
 }}
+:root[data-theme=light]{
+  color-scheme:light;
+  --bg:#eeeeeb;--surface:#fbfbf9;--surface-2:#f4f4f1;--raised:#e8e8e4;
+  --border:#dcdcd6;--border-strong:#c4c4bd;
+  --text:#161616;--muted:#5d5d58;--faint:#9a9a93;
+  --accent:#d0216b;--accent-ink:#b81a5c;--accent-soft:rgba(208,33,107,.09);--on-accent:#fff;
+  --ok:#16855a;--ok-soft:rgba(22,133,90,.1);
+  --warn:#9a6200;--warn-soft:rgba(154,98,0,.1);
+  --bad:#c62b1e;--bad-soft:rgba(198,43,30,.09);
+  --pop:0 18px 50px rgba(30,30,20,.18);
+}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{margin:0;background:var(--bg);color:var(--text);
-  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  -webkit-font-smoothing:antialiased}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
 button,input,select{font:inherit;color:inherit}
+code{font:12px var(--mono);padding:1px 4px;border-radius:3px;background:var(--raised)}
 svg.i{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
+::selection{background:var(--accent-soft)}
 
 /* ── Header ─────────────────────────────────────────── */
-header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 85%,transparent);
-  backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);
-  border-bottom:1px solid var(--border)}
-.bar{max-width:1320px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:10px 20px}
+header{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border)}
+.bar{max-width:1320px;margin:0 auto;display:flex;align-items:stretch;gap:28px;padding:0 20px;height:56px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em;white-space:nowrap}
-.brand .mark{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;
-  background:linear-gradient(135deg,var(--accent),var(--tag));color:#fff}
-.brand small{display:block;font-weight:500;font-size:11.5px;color:var(--muted);margin-top:-2px}
-nav.tabs{display:flex;gap:4px;margin:0 auto;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
-nav.tabs a{display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:9px;color:var(--muted);
-  text-decoration:none;font-weight:550;font-size:13.5px;transition:background .15s,color .15s}
+.brand .mark{color:var(--accent);display:grid;place-items:center}
+.brand .mark svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round}
+.brand small{display:block;font:500 11px/1.2 var(--mono);color:var(--muted);letter-spacing:0}
+nav.tabs{display:flex;gap:2px;margin-right:auto}
+nav.tabs a{position:relative;display:flex;align-items:center;gap:7px;padding:0 12px;color:var(--muted);
+  text-decoration:none;font-weight:550;font-size:13.5px;transition:color .15s}
+nav.tabs a svg.i{width:16px;height:16px}
 nav.tabs a:hover{color:var(--text)}
-nav.tabs a[aria-current=page]{background:var(--raised);color:var(--text);box-shadow:var(--shadow)}
-.chips{display:flex;gap:8px;align-items:center}
-.chip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;
-  background:var(--surface);border:1px solid var(--border);font-size:12.5px;color:var(--muted);white-space:nowrap}
-.chip b{color:var(--text);font-weight:600}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
-.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft)}
-.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--bad-soft)}
-.dot.warn{background:var(--warn);box-shadow:0 0 0 3px var(--warn-soft)}
+nav.tabs a[aria-current=page]{color:var(--text)}
+nav.tabs a[aria-current=page]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:var(--accent)}
+.chips{display:flex;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:4px;
+  border:1px solid var(--border);font:500 12px var(--mono);color:var(--muted);white-space:nowrap}
+.chip svg.i{width:14px!important;height:14px!important}
+.chip b{color:var(--text);font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.dot.ok{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.dot.bad{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+.dot.warn{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+.theme-toggle{display:grid;place-items:center;width:28px;height:28px;padding:0;border-radius:4px;cursor:pointer;
+  border:1px solid var(--border);background:none;color:var(--muted)}
+.theme-toggle:hover{color:var(--text);border-color:var(--border-strong)}
+.theme-toggle .tt-light{display:none}
+:root[data-theme=light] .theme-toggle .tt-light{display:block}
+:root[data-theme=light] .theme-toggle .tt-dark{display:none}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme=dark]) .theme-toggle .tt-light{display:block}
+  :root:not([data-theme=dark]) .theme-toggle .tt-dark{display:none}
+}
+
+/* ── Banner: whatever matters most right now (restart in progress, lost
+   connection, firmware on trial, a board with no token) ── */
+.banner{max-width:1320px;margin:14px auto 0;padding:0 20px}
+.banner>div{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;border-radius:var(--radius);font-size:13.5px;
+  background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent)}
+.banner svg.i{flex:none;color:var(--accent)}
+.banner .msg{flex:1;min-width:0}
+.banner .msg small{display:block;color:var(--muted);font-size:12.5px}
+.banner [data-kind=warn]{border-left-color:var(--warn)}.banner [data-kind=warn] svg.i{color:var(--warn)}
+.banner [data-kind=bad]{border-left-color:var(--bad)}.banner [data-kind=bad] svg.i{color:var(--bad)}
+.banner [data-kind=ok]{border-left-color:var(--ok)}.banner [data-kind=ok] svg.i{color:var(--ok)}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Offline: the last values stay, faded, so they don't pass for live ones */
+body.stale main .card-b,body.stale main .video,body.stale #chipWifi,body.stale #chipTemp{opacity:.4;transition:opacity .3s}
 
 /* ── Layout ─────────────────────────────────────────── */
-main{max-width:1320px;margin:0 auto;padding:20px 20px 40px}
+main{max-width:1320px;margin:0 auto;padding:18px 20px 40px}
 .page{display:none}
-.page.on{display:block;animation:fade .18s ease}
-@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 16px}
-.page-head h1{font-size:20px;margin:0;letter-spacing:-.015em}
-.page-head p{margin:2px 0 0;color:var(--muted)}
-.live{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
-.stack{display:grid;gap:16px}
+.page.on{display:block;animation:fade .16s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 0 18px}
+.page-head h1{font-size:22px;font-weight:650;margin:0;letter-spacing:-.02em}
+.page-head p{margin:4px 0 0;color:var(--muted);max-width:70ch}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.stack{display:grid;gap:14px}
 
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
-.card-h{display:flex;align-items:center;gap:10px;padding:14px 16px 0}
-.card-h h2{font-size:13.5px;font-weight:650;margin:0;letter-spacing:.005em}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+.card-h{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 16px;border-bottom:1px solid var(--border)}
+.card-h h2{font-size:13px;font-weight:650;margin:0;letter-spacing:.01em}
 .card-h .sub{margin-left:auto;font-size:12px;color:var(--muted)}
-.card-b{padding:12px 16px 16px}
-.card-b.flush{padding:8px 0 8px}
-.ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.card-b{padding:6px 16px 14px}
+.card-b.flush{padding:0}
 
 /* ── Controls ───────────────────────────────────────── */
-.row{display:flex;align-items:center;gap:12px;min-height:44px;padding:6px 0}
+.row{display:flex;align-items:center;gap:12px;min-height:46px;padding:8px 0}
 .row+.row{border-top:1px solid var(--border)}
 .row label,.row .lbl{flex:1;min-width:0}
-.row .lbl small,.row label small{display:block;color:var(--muted);font-size:12px}
-.val{min-width:28px;text-align:right;color:var(--muted);font-family:var(--mono);font-size:12.5px}
+.row .lbl small,.row label small{display:block;color:var(--muted);font-size:12px;margin-top:1px}
+.val{min-width:30px;text-align:right;color:var(--text);font:12.5px var(--mono)}
 input[type=number]{width:76px}
-select,input[type=text],input[type=password],input[type=number]{height:36px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);
-  background:var(--surface-2);padding:0 10px;outline:none;min-width:0}
-select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-input[type=range]{width:170px;accent-color:var(--accent)}
-.sw{position:relative;display:inline-block;vertical-align:middle;width:40px;height:24px;flex:none}
-.sw input{appearance:none;-webkit-appearance:none;margin:0;width:40px;height:24px;border-radius:99px;background:var(--border-strong);cursor:pointer;transition:background .15s;outline:none}
-.sw input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .15s}
-.sw input:checked{background:var(--accent)}
-.sw input:checked::after{transform:translateX(16px)}
-.sw input:focus-visible{box-shadow:0 0 0 3px var(--accent-soft)}
-.seg{display:inline-flex;padding:3px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
-.seg button{border:0;background:none;padding:6px 12px;border-radius:7px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:550}
-.seg button[aria-pressed=true]{background:var(--raised);color:var(--text);box-shadow:var(--shadow)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:var(--radius-sm);
-  border:1px solid var(--border-strong);background:var(--surface-2);cursor:pointer;font-weight:550;font-size:13.5px;white-space:nowrap}
+select,input[type=text],input[type=password],input[type=number]{height:34px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);
+  background:var(--surface-2);padding:0 9px;outline:none;min-width:0}
+input[type=number]{font-family:var(--mono)}
+select:focus,input:focus{border-color:var(--accent)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:170px;height:24px;margin:0;background:none;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:2px;background:var(--border-strong)}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--border-strong)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:18px;margin-top:-7.5px;border-radius:2px;background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
+input[type=range]::-moz-range-thumb{width:10px;height:18px;border:0;border-radius:2px;background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
+input[type=range]:focus-visible{outline:none}
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
+input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent)}
+.sw{position:relative;display:inline-block;vertical-align:middle;width:38px;height:22px;flex:none}
+.sw input{appearance:none;-webkit-appearance:none;margin:0;width:38px;height:22px;border-radius:5px;background:var(--raised);
+  border:1px solid var(--border-strong);cursor:pointer;transition:background .15s,border-color .15s;outline:none}
+.sw input::after{content:"";position:absolute;top:4px;left:4px;width:14px;height:14px;border-radius:3px;background:var(--muted);transition:transform .15s,background .15s}
+.sw input:checked{background:var(--accent-soft);border-color:var(--accent)}
+.sw input:checked::after{transform:translateX(16px);background:var(--accent)}
+.sw input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:inline-flex;padding:2px;border-radius:var(--radius-sm);border:1px solid var(--border-strong)}
+.seg button{border:0;background:none;padding:5px 11px;border-radius:3px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:550}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 13px;border-radius:var(--radius-sm);
+  border:1px solid var(--border-strong);background:none;cursor:pointer;font-weight:550;font-size:13.5px;white-space:nowrap;transition:background .12s,border-color .12s}
 .btn:hover{background:var(--raised)}
-.btn.primary{background:var(--accent);border-color:transparent;color:var(--on-accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn.primary:hover{filter:brightness(1.08)}
-.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
 .btn.danger:hover{background:var(--bad-soft)}
-.btn.ghost{background:none;border-color:transparent}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--text)}
 .btn:disabled{opacity:.5;cursor:default}
 .btn.sm{height:30px;padding:0 10px;font-size:12.5px}
+.btn svg.i{width:16px;height:16px}
 a.btn{color:var(--text);text-decoration:none}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .hint{font-size:12.5px;color:var(--muted);margin:10px 0 0;display:flex;gap:8px}
-.hint svg{color:var(--faint);margin-top:1px}
-.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:99px;font-size:11.5px;font-weight:600;
-  background:var(--raised);color:var(--muted)}
+.hint svg{color:var(--faint);margin-top:1px;width:16px!important;height:16px!important}
+.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:3px;font:600 11px var(--mono);
+  background:var(--raised);color:var(--muted);letter-spacing:.02em}
 .badge.ok{background:var(--ok-soft);color:var(--ok)}
 .badge.warn{background:var(--warn-soft);color:var(--warn)}
 .badge.bad{background:var(--bad-soft);color:var(--bad)}
-.badge.acc{background:var(--accent-soft);color:var(--accent)}
+.badge.acc{background:var(--accent);color:var(--on-accent)}
+/* "Saved" next to a setting that took, instead of a toast per change */
+.saved{display:inline-flex;align-items:center;gap:3px;color:var(--ok);font:500 11.5px var(--mono);white-space:nowrap;animation:saved 1.6s ease forwards}
+.saved svg.i{width:13px;height:13px}
+@keyframes saved{0%{opacity:0}10%,70%{opacity:1}100%{opacity:0}}
+.note{margin:12px 16px;padding:10px 12px;border-radius:var(--radius-sm);font-size:13px;background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--accent)}
+.note.ok{border-left-color:var(--ok)}
+.note.bad{border-left-color:var(--bad)}
+.note a{color:var(--accent-ink)}
 
-/* ── Video ──────────────────────────────────────────── */
-.video{position:relative;aspect-ratio:4/3;background:#07080a;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)}
+/* ── Video: a viewfinder ────────────────────────────── */
+.video{position:relative;aspect-ratio:4/3;background:#000;border-radius:4px;overflow:hidden;
+  width:min(100%,calc((100dvh - 118px) * 4 / 3));margin:0 auto}
 .video img,.video canvas{position:absolute;inset:0;width:100%;height:100%}
 .video img{object-fit:contain}
 .video img.gray{image-rendering:pixelated}
-.vbar{position:absolute;left:12px;right:12px;display:flex;align-items:center;gap:8px;pointer-events:none}
-.vbar.top{top:12px}.vbar.bottom{bottom:12px}
+/* Crop marks in the four corners */
+.video::after{content:"";position:absolute;inset:10px;pointer-events:none;opacity:.7;--c:rgba(255,255,255,.75);
+  background:
+    linear-gradient(var(--c),var(--c)) 0 0/18px 1.5px,linear-gradient(var(--c),var(--c)) 0 0/1.5px 18px,
+    linear-gradient(var(--c),var(--c)) 100% 0/18px 1.5px,linear-gradient(var(--c),var(--c)) 100% 0/1.5px 18px,
+    linear-gradient(var(--c),var(--c)) 0 100%/18px 1.5px,linear-gradient(var(--c),var(--c)) 0 100%/1.5px 18px,
+    linear-gradient(var(--c),var(--c)) 100% 100%/18px 1.5px,linear-gradient(var(--c),var(--c)) 100% 100%/1.5px 18px;
+  background-repeat:no-repeat}
+.vbar{position:absolute;left:18px;right:18px;display:flex;align-items:center;gap:6px;pointer-events:none;z-index:1}
+.vbar.top{top:18px}.vbar.bottom{bottom:18px}
 .vbar>*{pointer-events:auto}
-.pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:99px;font-size:12.5px;font-weight:550;
-  background:rgba(10,12,16,.62);color:#e7eaf0;border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.pill.btn{cursor:pointer}
-.pill.btn:hover{background:rgba(10,12,16,.8)}
-.pill[aria-pressed=true]{background:rgba(77,163,255,.85);border-color:transparent}
+.pill{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:4px;font:500 12px var(--mono);
+  background:rgba(0,0,0,.55);color:#eceded;border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.pill svg.i{width:15px!important;height:15px!important}
+.pill.btn{cursor:pointer;font-weight:500}
+.pill.btn:hover{background:rgba(0,0,0,.75)}
+.pill[aria-pressed=true]{background:#ff3d8b;border-color:#ff3d8b;color:#1c0610}
 .spacer{flex:1}
-.empty{display:grid;place-items:center;align-content:center;text-align:center;gap:6px;padding:22px 16px;color:var(--muted)}
-.empty svg{width:28px;height:28px;color:var(--faint)}
-.empty b{color:var(--text);font-weight:600}
-.video .empty{position:absolute;inset:0;color:#8a93a5}
-.video .empty b{color:#e7eaf0}
+.empty{display:grid;place-items:center;align-content:center;text-align:center;gap:5px;padding:22px 16px;color:var(--muted);font-size:13px}
+.empty svg{width:26px;height:26px;color:var(--faint)}
+.empty b{color:var(--text);font-weight:600;font-size:14px}
+.empty .btn{margin-top:8px}
+.video .empty{position:absolute;inset:0;color:#8e9198;z-index:1}
+.video .empty b{color:#eceded}
+.video .empty .btn{color:#eceded;border-color:rgba(255,255,255,.25)}
+.video .empty .btn:hover{background:rgba(255,255,255,.08)}
 
 /* ── Lists ──────────────────────────────────────────── */
 .list{list-style:none;margin:0;padding:0}
-.list li{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.list li{display:flex;align-items:center;gap:12px;padding:11px 16px}
 .list li+li{border-top:1px solid var(--border)}
-.tagid{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--tag) 16%,transparent);
-  color:var(--tag);font-weight:700;font-family:var(--mono)}
-.big{font-size:22px;font-weight:650;letter-spacing:-.02em}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.stat{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px}
-.stat span{display:block;font-size:11.5px;color:var(--muted)}
-.stat b{font-size:17px;font-weight:650;font-family:var(--mono)}
-.euler{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
-.euler .stat b i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
-#imuPlot{width:100%;height:110px;display:block}
 .net li{cursor:pointer}
 .net li:hover{background:var(--surface-2)}
 .net li.open{background:var(--surface-2);cursor:default;flex-wrap:wrap}
@@ -168,45 +243,99 @@ a.btn{color:var(--text);text-decoration:none}
 .bars i{width:3px;border-radius:1px;background:var(--border-strong)}
 .bars i:nth-child(1){height:5px}.bars i:nth-child(2){height:8px}.bars i:nth-child(3){height:11px}.bars i:nth-child(4){height:14px}
 .bars i.on{background:currentColor}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px}
-.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-family:var(--mono);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.meter{height:6px;border-radius:99px;background:var(--raised);overflow:hidden;margin-top:6px}
-.meter i{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .4s}
-.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.drop{border:1.5px dashed var(--border-strong);border-radius:12px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13.5px;padding-top:8px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font:12.5px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meter{height:4px;border-radius:2px;background:var(--raised);overflow:hidden;margin-top:6px}
+.meter i{display:block;height:100%;background:var(--accent);transition:width .4s}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:22px;margin-top:8px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
 .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
-.drop svg{width:26px;height:26px;color:var(--accent);margin-bottom:4px}
+.drop svg{width:24px;height:24px;color:var(--accent);margin-bottom:4px}
+
+/* ── Live with the motion sensor beside the video ────── */
+.live{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;align-items:start}
+.live.side{grid-template-columns:minmax(0,1fr) 320px}
+.readouts{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;margin-top:12px}
+.readouts div{background:var(--surface);padding:9px 10px}
+.readouts span{display:block;font:11px var(--mono);color:var(--muted)}
+.readouts b{font:500 17px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+#compass{display:block;width:150px;height:150px;margin:6px auto 0}
+.calib{margin-top:12px;padding:12px;border-radius:var(--radius-sm);background:var(--surface-2);border:1px solid var(--border)}
+.calib b{display:block;margin-bottom:2px}
+.calib p{margin:0 0 8px;color:var(--muted);font-size:12.5px}
+.calib .meter{height:6px;margin:8px 0}
+
+/* ── Setup ──────────────────────────────────────────── */
+.setup{max-width:520px;margin:10px auto 0}
+.steps{display:flex;gap:6px;margin:0 0 14px;font:500 12px var(--mono);color:var(--faint);list-style:none;padding:0}
+.steps li{flex:1;padding-top:8px;border-top:3px solid var(--border)}
+.steps li.on{color:var(--text);border-color:var(--accent)}
+.steps li.done{color:var(--muted);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.setup .card-b{padding:20px}
+.setup h1{font-size:21px;font-weight:650;margin:0 0 6px;letter-spacing:-.02em}
+.setup p{margin:0 0 14px;color:var(--muted)}
+.setup form{display:grid;gap:12px}
+.setup label{display:grid;gap:5px;font-weight:550;font-size:13.5px}
+.setup input[type=password],.setup input[type=text]{height:42px;font-size:15px}
+.setup .btn.primary{height:42px;font-size:14.5px}
+.setup .list{margin:0 -20px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);max-height:min(52vh,460px);overflow-y:auto}
+.setup .list li{padding:12px 20px}
+.linkbtn{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:13px}
+.addr{display:flex;align-items:center;gap:8px;padding:12px 14px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--surface-2);font:500 16px var(--mono);margin:0 0 8px}
+.addr a{color:var(--text);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis}
+.big-ok{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--ok-soft);color:var(--ok);margin-bottom:12px}
+.big-ok svg.i{width:26px;height:26px}
+details.adv{margin-top:14px}
+details.adv summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
+details.adv[open] summary{margin-bottom:8px}
 
 /* ── Dialog + toasts ────────────────────────────────── */
-dialog{border:1px solid var(--border);border-radius:16px;background:var(--surface);color:var(--text);padding:0;width:min(400px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(0,0,0,.45)}
-dialog::backdrop{background:rgba(5,7,10,.55);backdrop-filter:blur(3px)}
+dialog{border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);padding:0;width:min(420px,calc(100vw - 32px));box-shadow:var(--pop)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
 dialog form{padding:20px;display:grid;gap:12px}
-dialog h3{margin:0;font-size:16px}
+dialog h3{margin:0;font-size:16px;font-weight:650}
 dialog p{margin:0;color:var(--muted);font-size:13px}
 dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+dialog .actions.split{justify-content:space-between;flex-wrap:wrap}
+dialog .actions.split>span{display:flex;gap:8px}
+dialog .kv{font-size:13px;padding:0}
+dialog .kv:empty{display:none}
+dialog form>*{min-width:0}
+dialog code{overflow-wrap:anywhere}
 #toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:grid;gap:8px;z-index:50;pointer-events:none}
-.toast{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;background:var(--raised);border:1px solid var(--border-strong);
-  box-shadow:var(--shadow);font-size:13.5px;animation:pop .2s ease}
+.toast{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:var(--radius);background:var(--raised);border:1px solid var(--border-strong);
+  box-shadow:var(--pop);font-size:13.5px;animation:pop .2s ease}
 .toast.ok svg{color:var(--ok)}.toast.bad svg{color:var(--bad)}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition:none!important}}
 
 /* ── Mobile ─────────────────────────────────────────── */
 @media (max-width:980px){
-  .live{grid-template-columns:1fr}
-  .grid2{grid-template-columns:1fr}
+  .grid2,.live.side{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:720px){
-  /* backdrop-filter would make the header the containing block of the fixed nav */
-  header{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
-  .bar{padding:10px 14px}
-  main{padding:14px 14px 96px}
-  nav.tabs{position:fixed;left:12px;right:12px;bottom:12px;margin:0;justify-content:space-around;z-index:30;
-    padding:6px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-  nav.tabs a{flex-direction:column;gap:3px;padding:6px 8px;font-size:11px;flex:1;justify-content:center}
+  .bar{padding:0 16px;gap:12px;height:52px;justify-content:space-between}
+  .banner{padding:0 16px}
+  main{padding:14px 16px 92px}
+  /* Pages move to a bar along the bottom edge */
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);
+    padding:4px 6px calc(4px + env(safe-area-inset-bottom))}
+  nav.tabs a{flex-direction:column;gap:2px;padding:7px 4px;font-size:11px;flex:1;justify-content:center}
+  nav.tabs a svg.i{width:20px;height:20px}
+  nav.tabs a[aria-current=page]{color:var(--accent-ink)}
+  nav.tabs a[aria-current=page]::after{top:-5px;bottom:auto;left:30%;right:30%}
   .chips .chip.hide-sm{display:none}
+  .pill .pl{display:none}
+  .vbar{left:14px;right:14px}.vbar.top{top:14px}.vbar.bottom{bottom:14px}
   .brand small{display:none}
-  input[type=range]{width:120px}
-  .page-head h1{font-size:18px}
+  input[type=range]{width:110px}
+  .page-head h1{font-size:19px}
+  .row{flex-wrap:wrap}
+  .row label,.row .lbl{flex-basis:60%}
+  /* A slider takes the line under its label, with its value beside it */
+  .row:has(input[type=range]) label{flex-basis:100%}
+  .row input[type=range]{flex:1;width:auto}
+  .page-head{flex-wrap:wrap;align-items:flex-start}
 }
 </style>
 </head>
@@ -215,19 +344,10 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
   <symbol id="i-live" viewBox="0 0 24 24"><rect x="2.5" y="6" width="13" height="12" rx="2.5"/><path d="m15.5 10.5 5-3v9l-5-3"/></symbol>
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
   <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.8 16a4.8 4.8 0 0 1 6.4 0"/><circle cx="12" cy="19" r=".8" fill="currentColor"/></symbol>
-  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3"/></symbol>
-  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
   <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H8l1.5-2h5L16 6h1.5A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z"/><circle cx="12" cy="12.5" r="3.2"/></symbol>
   <symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></symbol>
   <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/></symbol>
-  <symbol id="i-tag" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M8 8h3v3H8zM13 13h3v3h-3zM13 8h3M8 13v3"/></symbol>
-  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 3.5-4"/></symbol>
-  <symbol id="i-axes" viewBox="0 0 24 24"><path d="M12 12V3.5M12 12l7.5 4.5M12 12l-7.5 4.5"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></symbol>
-  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8.5 8.5"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.8"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
-  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5s6.5 7 6.5 11a6.5 6.5 0 0 1-13 0c0-4 6.5-11 6.5-11Z"/></symbol>
-  <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/></symbol>
-  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M12 3v18M8.5 7 4 17h4.5ZM15.5 7l4.5 10h-4.5Z"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4M7.5 8.5 12 4l4.5 4.5M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16.5 6.5l2 2M14.5 8.5l1.5 1.5"/></symbol>
@@ -237,166 +357,186 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 2.8 19.5h18.4Z"/><path d="M12 10v4M12 17h.01"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"/></symbol>
-  <symbol id="i-bug" viewBox="0 0 24 24"><rect x="7.5" y="7.5" width="9" height="12" rx="4.5"/><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0M3.5 13h4M16.5 13h4M5 8.5l2.5 1.5M19 8.5 16.5 10M5 18l2.5-1.5M19 18l-2.5-1.5"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
   <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></symbol>
 </svg>
 
 <header>
   <div class="bar">
     <div class="brand">
-      <div class="mark"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg></div>
-      <div>GripLink<small>Wrist camera</small></div>
+      <div class="mark"><svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 8V3.5A1.5 1.5 0 0 1 3.5 2H8M18 2h4.5A1.5 1.5 0 0 1 24 3.5V8M24 18v4.5a1.5 1.5 0 0 1-1.5 1.5H18M8 24H3.5A1.5 1.5 0 0 1 2 22.5V18"/><rect x="8.5" y="8.5" width="9" height="9" rx=".5"/><path d="M13 5.5v2M13 18.5v2M5.5 13h2M18.5 13h2"/></svg></div>
+      <div>Wifi-Camera<small id="brandHost">wifi-camera.local</small></div>
     </div>
     <nav class="tabs" aria-label="Pages">
       <a href="#live" data-page="live"><svg class="i"><use href="#i-live"/></svg>Live</a>
-      <a href="#camera" data-page="camera"><svg class="i"><use href="#i-sliders"/></svg>Camera</a>
-      <a href="#network" data-page="network"><svg class="i"><use href="#i-wifi"/></svg>Network</a>
-      <a href="#system" data-page="system"><svg class="i"><use href="#i-chip"/></svg>System</a>
+      <a href="#camera" data-page="camera"><svg class="i"><use href="#i-sliders"/></svg>Picture</a>
+      <a href="#network" data-page="network"><svg class="i"><use href="#i-wifi"/></svg>WiFi</a>
+      <a href="#system" data-page="system"><svg class="i"><use href="#i-gear"/></svg>Settings</a>
     </nav>
     <div class="chips">
       <span class="chip hide-sm" id="chipWifi" title="WiFi"><svg class="i" style="width:15px;height:15px"><use href="#i-wifi"/></svg><b id="chipWifiText">—</b></span>
-      <span class="chip hide-sm" id="chipTemp" title="Chip temperature"><svg class="i" style="width:15px;height:15px"><use href="#i-temp"/></svg><b id="chipTempText">—</b></span>
-      <span class="chip" title="Connection to the camera"><span class="dot" id="connDot"></span><b id="connText">Connecting</b></span>
+      <span class="chip hide-sm" id="chipTemp" title="The camera is getting warm" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-temp"/></svg><b id="chipTempText">—</b></span>
+      <span class="chip" title="Connection to the camera"><span class="dot" id="connDot"></span><b id="connText">Connecting…</b></span>
+      <button class="theme-toggle" id="themeBtn" type="button" role="switch" aria-label="Dark mode" title="Light or dark theme">
+        <svg class="i tt-dark" style="width:15px;height:15px"><use href="#i-moon"/></svg><svg class="i tt-light" style="width:15px;height:15px"><use href="#i-sun"/></svg>
+      </button>
     </div>
   </div>
 </header>
+<div class="banner" id="banner" role="status" aria-live="polite" hidden><div><svg class="i" id="bannerIcon"><use href="#i-info"/></svg>
+  <div class="msg"><b id="bannerTitle"></b><small id="bannerText"></small></div>
+  <button class="btn sm" id="bannerBtn" hidden></button>
+  <button class="btn sm ghost" id="bannerX" hidden aria-label="Dismiss" title="Dismiss">✕</button></div></div>
 
 <main>
-<!-- ═══ LIVE ═══════════════════════════════════════════ -->
-<section class="page" id="page-live">
-  <div class="live">
-    <div class="stack">
-      <div class="video" id="video">
-        <img id="cam" alt="">
-        <canvas id="ov"></canvas>
-        <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b>Waiting for video</b><span>Only one viewer can watch the stream at a time.</span></div>
-        <div class="vbar top">
-          <span class="pill" id="resPill">—</span>
-          <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
-          <span class="spacer"></span>
-          <button class="pill btn" id="btnGray" aria-pressed="false" title="Show the grayscale image the tag detector sees"><svg class="i" style="width:16px;height:16px"><use href="#i-eye"/></svg>Detector view</button>
-        </div>
-        <div class="vbar bottom">
-          <span class="spacer"></span>
-          <button class="pill btn" id="btnFocus" hidden title="Focus now"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg>Focus</button>
-          <button class="pill btn" id="btnShot" title="Save a snapshot"><svg class="i" style="width:16px;height:16px"><use href="#i-shot"/></svg>Snapshot</button>
-          <button class="pill btn" id="btnFull" title="Fullscreen" aria-label="Fullscreen"><svg class="i" style="width:16px;height:16px"><use href="#i-full"/></svg></button>
-        </div>
-      </div>
-    </div>
+<!-- ═══ SETUP (not in the menu: opens by itself on a new camera) ═══ -->
+<section class="page" id="page-setup">
+  <div class="setup">
+    <ol class="steps" id="steps"><li data-step="pass">1 · Password</li><li data-step="wifi">2 · Home WiFi</li><li data-step="done">3 · Done</li></ol>
 
-    <div class="stack">
-      <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-tag"/></svg></span><h2>Tags in view</h2><span class="sub"><span class="badge" id="tagCount">0</span></span></div>
-        <div class="card-b flush">
-          <ul class="list" id="tagList"></ul>
-          <div class="empty" id="tagEmpty"><svg class="i"><use href="#i-tag"/></svg><b>No tags in view</b><span>Only AprilTag 36h11 markers are detected. Print one from the Detection card.</span></div>
-        </div>
-      </div>
+    <div class="card" id="stepPass" hidden><div class="card-b">
+      <h1 id="passTitle">Welcome to your camera</h1>
+      <p id="passText">First, choose a password. You'll need it whenever you change a setting, so pick one you'll remember.</p>
+      <form id="passForm">
+        <label>Password<input type="password" id="pass1" minlength="8" maxlength="64" autocomplete="new-password" required></label>
+        <label id="pass2Row">Type it again<input type="password" id="pass2" minlength="8" maxlength="64" autocomplete="new-password"></label>
+        <p class="muted" style="margin:0;font-size:12.5px">At least 8 characters, no spaces.</p>
+        <button class="btn primary" type="submit">Continue</button>
+      </form>
+    </div></div>
 
-      <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-gauge"/></svg></span><h2>Detection</h2>
-          <span class="sub"><label class="sw" title="Tag detection on/off"><input type="checkbox" id="detOn" aria-label="Tag detection"></label></span></div>
-        <div class="card-b">
-          <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(78px,1fr))">
-            <div class="stat"><span>Rate</span><b id="detRate">—</b></div>
-            <div class="stat" title="From the camera capturing the frame to the result being ready on the board (excludes the network and this page)"><span>Latency</span><b id="detLat">—</b></div>
-            <div class="stat"><span>Decode</span><b id="detDecode">—</b></div>
-            <div class="stat"><span>Detect</span><b id="detDetect">—</b></div>
-          </div>
-          <div class="row" style="margin-top:8px"><span class="lbl">Tag type<small>IDs 0–586. QR codes, ArUco and other AprilTag families (16h5, 25h9, 41h12…) are ignored.</small></span><b>AprilTag 36h11</b></div>
-          <div class="row"><label for="detRes">Detect at<small>While nobody watches the stream, the camera drops to this size so tags are found faster. The Live page uses the Camera page's size.</small></label>
-            <select id="detRes"><option value="0">Same as stream</option><option value="6">320 × 240</option><option value="10">640 × 480</option><option value="11">800 × 600</option></select></div>
-          <div class="row"><span class="lbl">Camera calibration<small id="calHint">Distances and pose use a rough lens estimate. Send your calibration to the board with <code>scripts/push_calibration.py</code>.</small></span><b id="calState">—</b></div>
-          <div class="row"><label for="tagId">Printable tag<small id="tagHint">Print at 100 % scale on plain white paper and keep it flat.</small></label>
-            <input type="number" id="tagId" min="0" max="586" value="0" aria-label="Tag ID"><a class="btn sm" id="tagOpen" href="/tag?id=0" target="_blank">Open</a></div>
-          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>Each detection takes one frame from the stream. The status LED stays lit while a tag is in view.</span></p>
-        </div>
-      </div>
+    <div class="card" id="stepWifi" hidden><div class="card-b">
+      <h1>Connect the camera to your WiFi</h1>
+      <p>Then you can watch it from any phone or computer at home. Pick your network:</p>
+      <div class="note" id="setupJoinNote" role="status" aria-live="polite" hidden style="margin:0 0 12px"></div>
+      <ul class="list net" id="setupNets"></ul>
+      <div class="empty" id="setupNetsEmpty"><svg class="i spin"><use href="#i-refresh"/></svg><b>Looking for networks…</b></div>
+      <p style="margin:14px 0 0;display:flex;gap:14px;flex-wrap:wrap"><button class="linkbtn" type="button" id="setupRescan">Search again</button><button class="linkbtn" type="button" id="setupSkip">Skip — keep using the camera's own WiFi</button></p>
+    </div></div>
 
-      <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-axes"/></svg></span><h2>Orientation</h2><span class="sub" id="imuBadge"></span></div>
-        <div class="card-b" id="imuBody">
-          <canvas id="imuPlot"></canvas>
-          <div class="euler">
-            <div class="stat"><span>Roll</span><b><i style="background:#f87171"></i><span id="eR">0.0°</span></b></div>
-            <div class="stat"><span>Pitch</span><b><i style="background:#34d399"></i><span id="eP">0.0°</span></b></div>
-            <div class="stat"><span>Yaw</span><b><i style="background:#4da3ff"></i><span id="eY">0.0°</span></b></div>
-          </div>
-        </div>
-        <div class="empty" id="imuEmpty" hidden><svg class="i"><use href="#i-axes"/></svg><b>IMU not connected</b><span>Attach an LSM6DSOX (I²C 0x6A) and reboot.</span></div>
-      </div>
-    </div>
+    <div class="card" id="stepDone" hidden><div class="card-b">
+      <div class="big-ok"><svg class="i"><use href="#i-check"/></svg></div>
+      <h1 id="doneTitle">All set</h1>
+      <p id="doneText"></p>
+      <div id="doneAddrs"></div>
+      <p id="doneTip" class="muted" style="font-size:12.5px"></p>
+      <button class="btn primary" type="button" id="setupFinish" style="width:100%">Open the camera</button>
+    </div></div>
   </div>
 </section>
 
-<!-- ═══ CAMERA ═════════════════════════════════════════ -->
+<!-- ═══ LIVE ═══════════════════════════════════════════ -->
+<section class="page" id="page-live">
+  <div class="live" id="live">
+    <div class="video" id="video">
+      <img id="cam" alt="Live view from the camera">
+      <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b id="camEmptyT">Starting the video…</b><span id="camEmptyS"></span></div>
+      <div class="vbar top">
+        <span class="pill" id="resPill" title="Picture size">—</span>
+        <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
+        <span class="spacer"></span>
+        <span class="pill" id="headPill" hidden title="Direction the camera faces"><svg class="i" style="width:15px;height:15px"><use href="#i-compass"/></svg><span id="headPillText"></span></span>
+      </div>
+      <div class="vbar bottom">
+        <span class="spacer"></span>
+        <button class="pill btn" id="btnFocus" hidden aria-label="Focus now" title="Focus now"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg><span class="pl">Focus</span></button>
+        <button class="pill btn" id="btnShot" aria-label="Take a photo" title="Save a photo"><svg class="i" style="width:16px;height:16px"><use href="#i-shot"/></svg><span class="pl">Photo</span></button>
+        <button class="pill btn" id="btnFull" title="Full screen" aria-label="Full screen"><svg class="i" style="width:16px;height:16px"><use href="#i-full"/></svg></button>
+      </div>
+    </div>
+
+    <aside class="stack" id="motion" hidden>
+      <div class="card">
+        <div class="card-h"><h2>Motion sensor</h2><span class="sub" id="motionBadge"></span></div>
+        <div class="card-b">
+          <canvas id="compass" aria-label="Compass: the direction the camera faces"></canvas>
+          <div class="readouts">
+            <div><span>Facing</span><b id="rHead">—</b></div>
+            <div title="Leaning left or right"><span>Side tilt</span><b id="rRoll">—</b></div>
+            <div title="Leaning forward or back"><span>Front tilt</span><b id="rPitch">—</b></div>
+          </div>
+          <div class="row" id="compassRow" style="margin-top:10px"><span class="lbl">Compass<small id="compassText">—</small></span>
+            <button class="btn sm" id="btnCalib" type="button">Calibrate</button></div>
+          <div class="calib" id="calib" hidden>
+            <b>Slowly turn the camera in every direction</b>
+            <p>Draw a big figure-8 in the air, and turn it on its sides and upside down. Stay away from metal and magnets. This finishes by itself.</p>
+            <div class="meter"><i id="calibBar" style="width:0"></i></div>
+            <div style="display:flex;justify-content:space-between;align-items:center"><span class="num muted" id="calibPct">0 %</span><button class="btn sm ghost" id="btnCalibCancel" type="button">Cancel</button></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══ PICTURE ════════════════════════════════════════ -->
 <section class="page" id="page-camera">
   <div class="page-head">
-    <div><h1>Camera</h1><p>Changes apply immediately and are kept across reboots. <span id="sensorName"></span></p></div>
-    <button class="btn danger" id="btnCamReset"><svg class="i"><use href="#i-reset"/></svg>Reset to defaults</button>
+    <div><h1>Picture</h1><p>Changes show up right away and are remembered.</p></div>
+    <button class="btn danger" id="btnCamReset"><svg class="i"><use href="#i-reset"/></svg>Reset picture settings</button>
   </div>
   <div class="grid2">
     <div class="stack">
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-image"/></svg></span><h2>Image</h2></div>
+        <div class="card-h"><h2>Size and quality</h2></div>
         <div class="card-b">
-          <div class="row"><label for="c-framesize">Resolution<small>Tags are detected at up to 400×300 whatever you pick</small></label>
+          <div class="row"><label for="c-framesize">Picture size<small>Smaller sizes give smoother video</small></label>
             <select id="c-framesize" data-var="framesize">
-              <option value="1">160 × 120</option><option value="5">240 × 240</option><option value="6">320 × 240</option>
-              <option value="10">640 × 480</option><option value="11">800 × 600</option><option value="12">1024 × 768</option>
-              <option value="13">1280 × 720</option><option value="15">1600 × 1200</option>
+              <option value="1">Tiny · 160 × 120</option><option value="5">Square · 240 × 240</option><option value="6">Small · 320 × 240</option>
+              <option value="10">Medium · 640 × 480</option><option value="11">Large · 800 × 600</option><option value="12">Extra large · 1024 × 768</option>
+              <option value="13">HD · 1280 × 720</option><option value="15">Full · 1600 × 1200</option>
             </select></div>
-          <div class="row"><label for="c-quality">JPEG quality<small>Lower is sharper but makes bigger, slower frames</small></label>
-            <input type="range" id="c-quality" data-var="quality" min="4" max="63"><span class="val" data-for="c-quality"></span></div>
+          <div class="row"><label for="c-quality">Quality<small>Lower it if the video stutters on a weak WiFi signal</small></label>
+            <select id="c-quality" data-var="quality"><option value="8">Best</option><option value="12">High</option><option value="20">Standard</option><option value="30">Light</option></select></div>
         </div>
       </div>
 
       <div class="card" id="focusCard" hidden>
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-focus"/></svg></span><h2>Focus</h2><span class="sub"><span class="badge" id="afState">—</span></span></div>
+        <div class="card-h"><h2>Focus</h2><span class="sub"><span class="badge" id="afState">—</span></span></div>
         <div class="card-b">
-          <div class="row"><span class="lbl">Mode<small>Continuous refocuses whenever the scene changes</small></span>
-            <div class="seg" id="afSeg"><button data-af="2">Continuous</button><button data-af="1">Single</button><button data-af="0">Infinity</button></div></div>
-          <div class="row"><span class="lbl">Refocus<small>Runs one autofocus pass now, then holds</small></span>
-            <button class="btn sm" id="btnAfNow"><svg class="i"><use href="#i-focus"/></svg>Focus now</button></div>
+          <div class="row"><span class="lbl">Focus mode<small>Auto keeps the picture sharp as things move</small></span>
+            <div class="seg" id="afSeg"><button data-af="2">Auto</button><button data-af="1">Once</button><button data-af="0">Far away</button></div></div>
+          <div class="row"><span class="lbl">Focus now<small>Sharpens once on what the camera sees, then holds</small></span>
+            <button class="btn sm" id="btnAfNow"><svg class="i"><use href="#i-focus"/></svg>Focus</button></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-flip"/></svg></span><h2>Orientation</h2></div>
+        <div class="card-h"><h2>Turn and mirror</h2></div>
         <div class="card-b">
-          <div class="row"><label for="c-hmirror">Mirror<small>Flip left ↔ right. Tags do not decode in a mirrored image, so leave it off for detection.</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
-          <div class="row"><label for="c-vflip">Flip<small>Flip top ↕ bottom</small></label><span class="sw"><input type="checkbox" id="c-vflip" data-var="vflip"></span></div>
-          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>AprilTags can't be read in a mirrored image. If text in the feed reads backwards, turn on Mirror.</span></p>
+          <div class="row"><label for="c-hmirror">Mirror<small>Swap left and right, like a selfie</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
+          <div class="row"><label for="c-vflip">Upside down<small>For a camera mounted the other way up</small></label><span class="sw"><input type="checkbox" id="c-vflip" data-var="vflip"></span></div>
         </div>
       </div>
     </div>
 
     <div class="stack">
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-sun"/></svg></span><h2>Exposure</h2></div>
+        <div class="card-h"><h2>Light</h2></div>
         <div class="card-b">
-          <div class="row"><label for="c-aec">Auto exposure</label><span class="sw"><input type="checkbox" id="c-aec" data-var="aec"></span></div>
-          <div class="row"><label for="c-ae_level">Exposure compensation</label><input type="range" id="c-ae_level" data-var="ae_level" min="-2" max="2"><span class="val" data-for="c-ae_level"></span></div>
-          <div class="row"><label for="c-agc">Auto gain<small>Brighter in low light, but noisier</small></label><span class="sw"><input type="checkbox" id="c-agc" data-var="agc"></span></div>
+          <div class="row"><label for="c-aec">Automatic exposure<small>Adjusts to the light by itself</small></label><span class="sw"><input type="checkbox" id="c-aec" data-var="aec"></span></div>
+          <div class="row"><label for="c-ae_level">Exposure<small>Darker ← → brighter</small></label><input type="range" id="c-ae_level" data-var="ae_level" min="-2" max="2"><span class="val" data-for="c-ae_level"></span></div>
+          <div class="row"><label for="c-agc">Low-light boost<small>Brighter in the dark, but grainier</small></label><span class="sw"><input type="checkbox" id="c-agc" data-var="agc"></span></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-drop"/></svg></span><h2>Color</h2></div>
+        <div class="card-h"><h2>Color</h2></div>
         <div class="card-b">
-          <div class="row"><label for="c-awb">Auto white balance</label><span class="sw"><input type="checkbox" id="c-awb" data-var="awb"></span></div>
-          <div class="row"><label for="c-wb_mode">White balance preset</label>
-            <select id="c-wb_mode" data-var="wb_mode"><option value="0">Auto</option><option value="1">Sunny</option><option value="2">Cloudy</option><option value="3">Office</option><option value="4">Home</option></select></div>
-          <div class="row"><label for="c-saturation">Saturation</label><input type="range" id="c-saturation" data-var="saturation" min="-2" max="2"><span class="val" data-for="c-saturation"></span></div>
+          <div class="row"><label for="c-awb">Automatic color<small>Keeps whites white in any light</small></label><span class="sw"><input type="checkbox" id="c-awb" data-var="awb"></span></div>
+          <div class="row"><label for="c-wb_mode">Lighting<small>If colors look off, pick the kind of light</small></label>
+            <select id="c-wb_mode" data-var="wb_mode"><option value="0">Automatic</option><option value="1">Sunny</option><option value="2">Cloudy</option><option value="3">Office lights</option><option value="4">Home lights</option></select></div>
+          <div class="row"><label for="c-saturation">Color strength</label><input type="range" id="c-saturation" data-var="saturation" min="-2" max="2"><span class="val" data-for="c-saturation"></span></div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-contrast"/></svg></span><h2>Tone</h2></div>
+        <div class="card-h"><h2>Look</h2></div>
         <div class="card-b">
           <div class="row"><label for="c-brightness">Brightness</label><input type="range" id="c-brightness" data-var="brightness" min="-2" max="2"><span class="val" data-for="c-brightness"></span></div>
-          <div class="row"><label for="c-contrast">Contrast<small>Higher contrast helps tag detection</small></label><input type="range" id="c-contrast" data-var="contrast" min="-2" max="2"><span class="val" data-for="c-contrast"></span></div>
+          <div class="row"><label for="c-contrast">Contrast</label><input type="range" id="c-contrast" data-var="contrast" min="-2" max="2"><span class="val" data-for="c-contrast"></span></div>
           <div class="row"><label for="c-sharpness">Sharpness</label><input type="range" id="c-sharpness" data-var="sharpness" min="-2" max="2"><span class="val" data-for="c-sharpness"></span></div>
         </div>
       </div>
@@ -404,85 +544,110 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
   </div>
 </section>
 
-<!-- ═══ NETWORK ════════════════════════════════════════ -->
+<!-- ═══ WIFI ═══════════════════════════════════════════ -->
 <section class="page" id="page-network">
-  <div class="page-head"><div><h1>Network</h1><p>The camera always runs its own hotspot, and can also join one WiFi network.</p></div></div>
+  <div class="page-head"><div><h1>WiFi</h1><p>Connect the camera to your home WiFi to watch it from any device there.</p></div></div>
   <div class="grid2">
-    <div class="card">
-      <div class="card-h"><span class="ic"><svg class="i"><use href="#i-wifi"/></svg></span><h2>Connections</h2></div>
-      <div class="card-b flush">
-        <ul class="list">
-          <li><div style="flex:1;min-width:0"><div class="muted" style="font-size:12px">Hotspot</div><b id="nApSsid">—</b></div>
-            <div style="text-align:right"><div class="num" id="nApIp">—</div><div class="muted" style="font-size:12px" id="nApClients"></div></div></li>
-          <li><div style="flex:1;min-width:0"><div class="muted" style="font-size:12px">WiFi network</div><b id="nStaSsid">Not connected</b></div>
-            <div style="text-align:right"><div class="num" id="nStaIp"></div><div class="muted" style="font-size:12px" id="nStaRssi"></div></div></li>
-        </ul>
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h2>Home WiFi</h2></div>
+        <div class="card-b flush">
+          <ul class="list">
+            <li><div style="flex:1;min-width:0"><b id="nStaSsid">Not connected</b><div class="muted" style="font-size:12.5px" id="nStaNote"></div></div>
+              <div style="text-align:right;color:var(--text)" id="nStaRssi"></div>
+              <button class="btn sm ghost" id="btnWifiForget" type="button" hidden>Forget</button></li>
+          </ul>
+          <div id="nStaAddrs" style="padding:0 16px 6px"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>The camera's own WiFi</h2></div>
+        <div class="card-b flush">
+          <ul class="list">
+            <li><div style="flex:1;min-width:0"><b id="nApSsid">—</b><div class="muted" style="font-size:12.5px" id="nApNote"></div></div>
+              <div style="text-align:right"><div id="nApState">—</div><div class="muted num" style="font-size:12px" id="nApIp"></div></div></li>
+          </ul>
+        </div>
       </div>
     </div>
     <div class="card">
-      <div class="card-h"><span class="ic"><svg class="i"><use href="#i-refresh"/></svg></span><h2>Join a network</h2>
-        <span class="sub"><button class="btn sm" id="btnScan"><svg class="i"><use href="#i-refresh"/></svg>Scan</button></span></div>
+      <div class="card-h"><h2>Connect to a network</h2>
+        <span class="sub"><button class="btn sm" id="btnScan"><svg class="i"><use href="#i-refresh"/></svg>Find networks</button></span></div>
       <div class="card-b flush">
+        <div class="note" id="joinNote" role="status" aria-live="polite" hidden></div>
         <ul class="list net" id="netList"></ul>
-        <div class="empty" id="netEmpty"><svg class="i"><use href="#i-wifi"/></svg><b>No scan yet</b><span>Scanning pauses video for about two seconds.</span></div>
+        <div class="empty" id="netEmpty"><svg class="i"><use href="#i-wifi"/></svg><b>Find the networks around the camera</b><span>The video pauses for a moment while it looks.</span></div>
       </div>
-      <div class="card-b" style="padding-top:0"><p class="hint" style="margin:0"><svg class="i"><use href="#i-info"/></svg><span>The chosen network is remembered. Switching can briefly disconnect devices on the hotspot.</span></p></div>
+      <div class="card-b" style="padding-top:0"><p class="hint" style="margin:0"><svg class="i"><use href="#i-info"/></svg><span id="joinHint"></span></p></div>
     </div>
   </div>
 </section>
 
-<!-- ═══ SYSTEM ═════════════════════════════════════════ -->
+<!-- ═══ SETTINGS ═══════════════════════════════════════ -->
 <section class="page" id="page-system">
-  <div class="page-head"><div><h1>System</h1><p>Device health and maintenance.</p></div></div>
+  <div class="page-head"><div><h1>Settings</h1><p>Updates, password and help when something isn't right.</p></div></div>
   <div class="grid2">
     <div class="stack">
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-chip"/></svg></span><h2>Device</h2></div>
+        <div class="card-h"><h2>Your camera</h2></div>
         <div class="card-b">
           <dl class="kv">
-            <dt>Camera sensor</dt><dd id="sSensor">—</dd>
-            <dt>Autofocus</dt><dd id="sAf">—</dd>
-            <dt>IMU</dt><dd id="sImu">—</dd>
-            <dt>Chip temperature</dt><dd id="sTemp">—</dd>
-            <dt>Uptime</dt><dd id="sUptime">—</dd>
-            <dt>Firmware</dt><dd id="sVersion">—</dd>
-            <dt>Built</dt><dd id="sBuild">—</dd>
+            <dt>Software version</dt><dd id="sVersion">—</dd>
+            <dt>Temperature</dt><dd id="sTemp">—</dd>
+            <dt>Motion sensor</dt><dd id="sImu">—</dd>
+            <dt>Running for</dt><dd id="sUptime">—</dd>
           </dl>
-          <div style="margin-top:14px" class="tiles">
-            <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
-            <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>PSRAM free</span><span class="num" id="sPsram">—</span></div><div class="meter"><i id="sPsramBar" style="width:0"></i></div></div>
-          </div>
+          <details class="adv">
+            <summary>Advanced details</summary>
+            <dl class="kv">
+              <dt>Camera sensor</dt><dd id="sSensor">—</dd>
+              <dt>Autofocus</dt><dd id="sAf">—</dd>
+              <dt>Compass</dt><dd id="sMag">—</dd>
+              <dt>Motion samples</dt><dd id="sImuN">—</dd>
+              <dt>Built</dt><dd id="sBuild">—</dd>
+              <dt>Settings layout</dt><dd id="sSchema">—</dd>
+            </dl>
+            <div style="margin-top:14px" class="tiles">
+              <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
+              <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>PSRAM free</span><span class="num" id="sPsram">—</span></div><div class="meter"><i id="sPsramBar" style="width:0"></i></div></div>
+            </div>
+            <p style="margin:12px 0 0"><a class="btn sm" href="/status" target="_blank">Status (JSON)</a></p>
+          </details>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Help</h2></div>
+        <div class="card-b">
+          <div class="row"><span class="lbl">Set up again<small>Choose a WiFi network step by step</small></span>
+            <a class="btn sm" href="#setup">Start setup</a></div>
+          <div class="row"><span class="lbl">Restart the camera<small>Takes about ten seconds</small></span>
+            <button class="btn sm" id="btnReboot"><svg class="i"><use href="#i-power"/></svg>Restart</button></div>
+          <div class="row"><label for="resetScope">Reset<small>Back to how it came, then restart</small></label>
+            <select id="resetScope"><option value="camera">Picture settings</option><option value="wifi">WiFi network</option><option value="imu">Compass calibration</option><option value="token">Password</option><option value="all">Everything (factory reset)</option></select>
+            <button class="btn sm danger" id="btnResetScope">Reset</button></div>
         </div>
       </div>
     </div>
     <div class="stack">
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-upload"/></svg></span><h2>Firmware update</h2></div>
+        <div class="card-h"><h2>Software update</h2></div>
         <div class="card-b">
-          <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose firmware file">
+          <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose the update file">
             <svg class="i"><use href="#i-upload"/></svg>
-            <div><b style="color:var(--text)">Drop firmware.bin</b> or click to choose</div>
-            <div style="font-size:12px;margin-top:2px">.pio/build/firebeetle2_esp32s3/firmware.bin</div>
+            <div><b style="color:var(--text)">Choose the update file</b> or drop it here</div>
+            <div style="font-size:12px;margin-top:2px">The file ending in <span class="num">.bin</span> from the release page — not the one with "factory" in its name</div>
             <input type="file" id="otaFile" accept=".bin" hidden>
           </div>
-          <div id="otaProg" hidden style="margin-top:12px"><div style="display:flex;justify-content:space-between;font-size:12.5px"><span id="otaText">Uploading…</span><span class="num" id="otaPct">0%</span></div><div class="meter"><i id="otaBar" style="width:0"></i></div></div>
+          <div id="otaProg" hidden style="margin-top:12px"><div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px"><span id="otaText">Sending…</span><span class="num" id="otaPct">0%</span></div><div class="meter"><i id="otaBar" style="width:0"></i></div></div>
+          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>Keep the camera plugged in until the update finishes. If anything goes wrong, it goes back to the version it has now by itself.</span></p>
         </div>
       </div>
       <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-key"/></svg></span><h2>Access</h2></div>
+        <div class="card-h"><h2>Password</h2></div>
         <div class="card-b">
-          <div class="row"><span class="lbl">API token<small id="tokState">—</small></span>
-            <button class="btn sm" id="btnTokSet">Enter token</button><button class="btn sm ghost" id="btnTokForget">Forget</button></div>
-          <p class="hint"><svg class="i"><use href="#i-lock"/></svg><span>Changing settings, networks or firmware needs the API_TOKEN from secrets.h. It's stored only in this browser.</span></p>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-h"><span class="ic"><svg class="i"><use href="#i-bug"/></svg></span><h2>Maintenance</h2></div>
-        <div class="card-b">
-          <div class="row"><span class="lbl">Diagnostics<small>Raw data for debugging</small></span>
-            <a class="btn sm" href="/status" target="_blank">Status JSON</a><a class="btn sm" href="/debug/gray.bmp" target="_blank">Detector frame</a></div>
-          <div class="row"><span class="lbl">Restart<small>Video drops for about ten seconds</small></span>
-            <button class="btn sm danger" id="btnReboot"><svg class="i"><use href="#i-power"/></svg>Reboot</button></div>
+          <div class="row"><span class="lbl">On this device<small id="tokState">—</small></span>
+            <button class="btn sm" id="btnTokSet">Enter password</button><button class="btn sm ghost" id="btnTokForget">Forget</button></div>
+          <p class="hint"><svg class="i"><use href="#i-lock"/></svg><span>Needed to change settings. It's remembered only in this browser. Forgot it? Choose Reset → Password, then set a new one.</span></p>
         </div>
       </div>
     </div>
@@ -492,62 +657,91 @@ dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 
 <dialog id="tokDlg">
   <form method="dialog">
-    <h3 id="tokTitle">API token</h3>
-    <p id="tokHelp">Enter the token. It's saved in this browser only.</p>
-    <input type="password" id="tokInput" autocomplete="off" placeholder="Token" required>
-    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Save</button></div>
+    <h3 id="tokTitle">Camera password</h3>
+    <p id="tokHelp">Enter the password you chose when you set up the camera.</p>
+    <input type="password" id="tokInput" autocomplete="current-password" placeholder="Password" required>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">OK</button></div>
+  </form>
+</dialog>
+<dialog id="askDlg">
+  <form method="dialog">
+    <h3 id="askTitle"></h3>
+    <p id="askText"></p>
+    <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" id="askOk" value="ok">OK</button></div>
   </form>
 </dialog>
 <div id="toasts" role="status" aria-live="polite"></div>
 
 <script>
 'use strict';
+// Written for someone who isn't an engineer: plain words on screen, the
+// technical details only under Settings → Advanced details.
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = (id, style = '') => `<svg class="i" style="${style}"><use href="#i-${id}"/></svg>`;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const local = {
+  get(k) { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } },
+  set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (_) {} },
+};
 
-// ── Toasts ────────────────────────────────────────────
+// ── Feedback: toasts for actions, "Saved" beside a setting that took ──
 function toast(msg, kind = 'ok') {
   const t = document.createElement('div');
   t.className = 'toast ' + kind;
   t.innerHTML = icon(kind === 'ok' ? 'check' : 'alert') + `<span>${esc(msg)}</span>`;
   $('#toasts').append(t);
-  setTimeout(() => t.remove(), 2600);
+  setTimeout(() => t.remove(), kind === 'ok' ? 2600 : 5000);
+}
+function saved(el) {
+  const row = el.closest('.row');
+  if (!row) return;
+  row.querySelector('.saved')?.remove();
+  const s = document.createElement('span');
+  s.className = 'saved';
+  s.innerHTML = icon('check') + 'Saved';
+  (row.querySelector('label, .lbl') || row.firstChild).after(s);
+  setTimeout(() => s.remove(), 1700);
+}
+// Styled stand-in for confirm()
+function ask(title, text, ok = 'OK', danger = false) {
+  return new Promise(resolve => {
+    const d = $('#askDlg');
+    $('#askTitle').textContent = title;
+    $('#askText').textContent = text;
+    $('#askOk').textContent = ok;
+    $('#askOk').className = 'btn ' + (danger ? 'danger' : 'primary');
+    d.returnValue = '';
+    d.onclose = () => resolve(d.returnValue === 'ok');
+    d.showModal();
+  });
 }
 
-// ── API + token ───────────────────────────────────────
+// ── Talking to the camera, and its password ───────────
+// The password is the firmware's API token: sent as X-Token, kept in this
+// browser only.
 const TOK_KEY = 'glTok';
 const store = {
-  get() { try { return localStorage.getItem(TOK_KEY) || ''; } catch (_) { return ''; } },
-  set(v) { try { localStorage.setItem(TOK_KEY, v); } catch (_) {} renderTok(); },
-  clear() { try { localStorage.removeItem(TOK_KEY); } catch (_) {} renderTok(); },
+  get: () => local.get(TOK_KEY),
+  set(v) { local.set(TOK_KEY, v); renderTok(); },
+  clear() { local.set(TOK_KEY, ''); renderTok(); },
 };
-// A board with no token yet (a release build) lets the first visitor choose one
-async function boardHasToken() {
-  try { return (await getJSON('/status')).auth !== false; } catch (_) { return true; }
+async function getJSON(path, ms = 4000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(path, {signal: ctl.signal, cache: 'no-store'}); if (!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(t); }
 }
-async function claimToken(tok) {
-  const r = await fetch('/auth/claim', {method: 'POST', headers: {'X-Claim': '1'}, body: tok});
-  if (!r.ok) throw new Error((await r.text()) || r.status);
-}
-async function askToken() {
-  const claiming = !(await boardHasToken());
-  $('#tokTitle').textContent = claiming ? 'Choose an API token' : 'API token';
-  $('#tokHelp').textContent = claiming
-    ? 'This board has no token yet. Choose one (8–64 characters, no spaces): it protects settings, WiFi and firmware updates, and is stored on the board. The first person to set it wins, so do this right after flashing.'
-    : "Enter the token — the API_TOKEN from src/secrets.h, or the one you chose. It's saved in this browser only.";
+// Ask for the password (a camera without one goes to setup instead)
+function askToken() {
+  if (S && S.auth === false) { location.hash = '#setup'; return Promise.resolve(false); }
   return new Promise(resolve => {
     const d = $('#tokDlg'), inp = $('#tokInput');
     inp.value = '';
     d.returnValue = '';
-    d.onclose = async () => {
-      if (d.returnValue !== 'ok' || !inp.value) return resolve(false);
+    d.onclose = () => {
       const tok = inp.value.trim();
-      if (claiming) {
-        try { await claimToken(tok); } catch (e) { toast(e.message, 'bad'); return resolve(false); }
-        toast('Token set on the board');
-      }
+      if (d.returnValue !== 'ok' || !tok) return resolve(false);
       store.set(tok);
       resolve(true);
     };
@@ -555,39 +749,42 @@ async function askToken() {
     inp.focus();
   });
 }
-async function getJSON(path, ms = 4000) {
-  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
-  try { const r = await fetch(path, {signal: ctl.signal, cache: 'no-store'}); if (!r.ok) throw new Error(r.status); return await r.json(); }
-  finally { clearTimeout(t); }
-}
-// State-changing calls: send the token, ask for it once on 401
+// Changes need the password: send it, ask for it once if it's missing or wrong
 async function authed(path, opts = {}) {
-  if (!store.get() && !(await askToken())) throw new Error('No token');
+  if (!store.get() && !(await askToken())) throw new Error('The password is needed for that');
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await fetch(path, {...opts, headers: {...(opts.headers || {}), 'X-Token': store.get()}});
     if (r.status !== 401) {
-      if (!r.ok) throw new Error((await r.text()) || r.status);
+      if (!r.ok) throw new Error((await r.text()) || 'The camera said no (' + r.status + ')');
       return r;
     }
     store.clear();
-    if (attempt || !(await askToken())) throw new Error('Wrong token');
+    if (attempt || !(await askToken())) throw new Error("That password isn't right");
   }
 }
 
-// One instance per name; stops itself when the Live page is left
+// One instance per name; stops itself when the Live page is left or the tab
+// is hidden (a background tab must not hold the one video slot or keep
+// asking the camera for data)
 const loops = {};
+const liveShown = () => page === 'live' && !document.hidden;
 function loop(name, fn, ms) {
   if (loops[name]) return;
   loops[name] = true;
   (async function tick() {
-    if (page !== 'live') { loops[name] = false; return; }
+    if (!liveShown()) { loops[name] = false; return; }
     await fn();
     setTimeout(tick, ms);
   })();
 }
+function startLive() {
+  if (!liveShown()) return;
+  loop('stream', checkStream, 2000);
+  if (imuOn()) loop('pose', pollPose, 100);
+}
 
-// ── Routing ───────────────────────────────────────────
-const pages = ['live', 'camera', 'network', 'system'];
+// ── Pages ─────────────────────────────────────────────
+const pages = ['setup', 'live', 'camera', 'network', 'system'];
 let page = null;
 function route() {
   const next = pages.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'live';
@@ -595,320 +792,369 @@ function route() {
   page = next;
   for (const p of pages) $('#page-' + p).classList.toggle('on', p === page);
   $$('nav.tabs a').forEach(a => a.dataset.page === page ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-  setStream(page === 'live');
+  setStream(liveShown());
   if (page === 'camera') loadCamera();
-  if (page === 'live') { loop('det', pollDet, 200); loop('pose', pollPose, 100); }
+  if (page === 'setup') setupEnter();
+  startLive();
 }
 addEventListener('hashchange', route);
+document.addEventListener('visibilitychange', () => {
+  setStream(liveShown());
+  if (!document.hidden) { startLive(); pollStatus(); }
+});
+addEventListener('pagehide', () => { cam.src = BLANK; });
 
-// ── Status (header + system page) ─────────────────────
-let S = null, online = false;
-const bars = rssi => { const n = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -75 ? 2 : 1;
+// ── Theme ─────────────────────────────────────────────
+const root = document.documentElement;
+const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches;
+const renderTheme = () => $('#themeBtn').setAttribute('aria-checked', isDark());
+$('#themeBtn').onclick = () => {
+  const t = isDark() ? 'light' : 'dark';
+  root.dataset.theme = t;
+  local.set('theme', t);
+  renderTheme();
+};
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', renderTheme);
+
+// ── Status, connection, restarts ──────────────────────
+let S = null, online = false, fails = 0, lastOk = 0, statusTimer = 0, firstStatus = true;
+// R: a restart this page started (restart, reset, update) and is waiting
+// for the camera to come back from. notice: a result shown until dismissed.
+let R = null, notice = null;
+const signal = rssi => rssi >= -55 ? [4, 'Strong'] : rssi >= -67 ? [3, 'Good'] : rssi >= -75 ? [2, 'Fair'] : [1, 'Weak'];
+const bars = rssi => { const n = signal(rssi)[0];
   return '<span class="bars">' + [1,2,3,4].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>'; };
 const fmtUp = s => { const d = s / 86400 | 0, h = s / 3600 % 24 | 0, m = s / 60 % 60 | 0;
-  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60 | 0}s`; };
+  return d ? `${d} day${d > 1 ? 's' : ''} ${h} h` : h ? `${h} h ${m} min` : m ? `${m} min` : 'Just started'; };
 const fmtBytes = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024 | 0) + ' KB';
+const host = () => (S?.hostname || 'wifi-camera') + '.local';
+// This page reached the camera through its own WiFi (not the home router)
+const viaHotspot = () => !!S && !!S.wifi.ap_ip && location.hostname === S.wifi.ap_ip;
+const apOn = w => w.ap_on ?? w.ap_ip !== '0.0.0.0';
+const apName = () => S?.wifi.ap_ssid || 'Wifi-Camera';
+const OTA_CONFIRM_S = 20; // ota_health.h OTA_CONFIRM_MS
+
 function setOnline(on) {
   online = on;
-  $('#connDot').className = 'dot ' + (on ? 'ok' : 'bad');
-  $('#connText').textContent = on ? 'Online' : 'Offline';
+  document.body.classList.toggle('stale', !on);
+  $('#connDot').className = 'dot ' + (on ? 'ok' : R ? 'warn' : 'bad');
+  $('#connText').textContent = on ? 'Connected' : R ? 'Restarting' : 'Offline';
 }
 async function pollStatus() {
-  try { S = await getJSON('/status'); setOnline(true); renderStatus(); }
-  catch (_) { setOnline(false); }
-  setTimeout(pollStatus, 2000);
+  clearTimeout(statusTimer);
+  try {
+    const s = await getJSON('/status', R ? 2500 : 4000);
+    const back = !online && lastOk;
+    S = s; fails = 0; lastOk = Date.now();
+    setOnline(true);
+    if (R) trackRestart(s);
+    renderStatus();
+    if (back) setStream(liveShown()); // the old video connection died with the camera
+    if (firstStatus) {
+      firstStatus = false;
+      // A new camera, or one not on a home network yet: guide the person
+      if (page !== 'setup' && (S.auth === false || (viaHotspot() && !S.wifi.sta_ssid && !local.get('setupSkipped'))))
+        location.hash = '#setup';
+    }
+  } catch (_) {
+    if (++fails >= 2 || R) setOnline(false);
+  }
+  renderBanner();
+  statusTimer = setTimeout(pollStatus, R || joining ? 1000 : document.hidden ? 10000 : 2000);
 }
+function watchRestart(kind) {
+  R = {kind, t0: Date.now(), version: S?.version, build: S?.build, rebooted: false, pending: false, last: null, again: false};
+  notice = null;
+  setTimeout(pollStatus, 1200); // it restarts ~0.5 s after replying
+  renderBanner();
+}
+function trackRestart(s) {
+  // Uptime starting over is how a restart shows (the camera may answer once more first)
+  if (!R.rebooted && s.uptime > (Date.now() - R.t0) / 1000 + 2) return;
+  R.rebooted = true;
+  if (R.last !== null && s.uptime + 2 < R.last) R.again = true; // restarted while on trial = went back
+  R.last = s.uptime;
+  if (s.ota_pending) { R.pending = true; return; }
+  const r = R;
+  R = null;
+  if (r.kind !== 'ota') {
+    toast('The camera is back');
+    if (page === 'camera') loadCamera();
+    if (S.auth === false) location.hash = '#setup';
+    return;
+  }
+  const changed = s.version !== r.version || s.build !== r.build;
+  notice = changed && !r.again
+    ? {kind: 'ok', icon: 'check', title: 'Update installed', text: `The camera now runs version ${s.version}. Reload this page to finish.`, btn: 'Reload', action: () => location.reload(), close: true}
+    : r.again || r.pending
+    ? {kind: 'bad', icon: 'alert', title: "The update didn't work", text: `The camera went back to version ${s.version} and works as before. Try downloading the update again.`, close: true}
+    : {kind: 'warn', icon: 'info', title: `Still on version ${s.version}`, text: 'That file may have been the version the camera already had.', close: true};
+  $('#otaText').textContent = notice.title;
+}
+
+function renderBanner() {
+  let b = null;
+  const hot = viaHotspot();
+  if (R) {
+    const t = (Date.now() - R.t0) / 1000;
+    const left = Math.max(0, OTA_CONFIRM_S - (S?.uptime ?? 0));
+    if (R.pending && online)
+      b = {kind: 'warn', icon: 'refresh', spin: true, title: 'Finishing the update…', text: `About ${left} seconds left. Keep the camera plugged in.`};
+    else if (t > (R.kind === 'ota' ? 90 : 60))
+      b = {kind: 'bad', icon: 'alert', title: "The camera hasn't come back yet", text: hot ? `Check it has power, and that this device is still on ${apName()}. Still trying…` : `Check it has power. If your home WiFi is down, the camera offers its own WiFi, ${apName()}. Still trying…`};
+    else
+      b = {kind: 'info', icon: 'refresh', spin: true, title: R.kind === 'ota' ? 'Installing the update…' : 'Restarting…', text: 'This takes a few seconds. The page reconnects by itself' + (hot ? ` — if this device leaves ${apName()} meanwhile, join it again.` : '.')};
+    if (R.kind === 'ota') $('#otaText').textContent = b.title;
+  } else if (!online && fails >= 2) {
+    const since = lastOk ? `Showing what it last sent, at ${new Date(lastOk).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}. ` : '';
+    b = {kind: 'bad', icon: 'alert', title: "Can't reach the camera",
+      text: since + (joining && !hot ? `It's moving to ${joining.ssid} — connect this device to ${joining.ssid} and open http://${host()}.`
+        : hot ? `Check it has power, and that this device is still connected to ${apName()}. Trying again…`
+        : 'Check it has power and that this device is on the same WiFi. Trying again…')};
+  } else if (notice) {
+    b = notice;
+  } else if (S?.ota_pending) {
+    b = {kind: 'warn', icon: 'refresh', spin: true, title: 'Finishing an update…', text: `About ${Math.max(0, OTA_CONFIRM_S - S.uptime)} seconds left. Keep the camera plugged in.`};
+  } else if (S && S.auth === false && page !== 'setup') {
+    b = {kind: 'info', icon: 'key', title: 'Finish setting up your camera', text: 'Choose a password so only you can change its settings.', btn: 'Set up', action: () => { location.hash = '#setup'; }};
+  }
+  const el = $('#banner');
+  el.hidden = !b;
+  if (!b) return;
+  el.firstElementChild.dataset.kind = b.kind;
+  $('#bannerIcon').innerHTML = `<use href="#i-${b.icon}"/>`;
+  $('#bannerIcon').classList.toggle('spin', !!b.spin);
+  $('#bannerTitle').textContent = b.title;
+  $('#bannerText').textContent = b.text;
+  $('#bannerBtn').hidden = !b.btn;
+  $('#bannerBtn').textContent = b.btn || '';
+  $('#bannerBtn').onclick = b.action || null;
+  $('#bannerX').hidden = !b.close;
+}
+$('#bannerX').onclick = () => { notice = null; renderBanner(); };
+
+const imuOn = () => !!S && S.imu && S.imu.state !== 'none';
+const addrHTML = (url, note) => `<div class="addr"><a href="${esc(url)}">${esc(url.replace(/\/$/, ''))}</a></div>` + (note ? `<p class="muted" style="margin:-4px 0 10px;font-size:12px">${note}</p>` : '');
+
 function renderStatus() {
-  const w = S.wifi;
-  $('#chipWifiText').innerHTML = w.sta_ssid ? esc(w.sta_ssid) : 'Hotspot only';
-  // Network page
-  $('#nApSsid').textContent = w.ap_ssid;
-  $('#nApIp').textContent = w.ap_ip;
-  $('#nApClients').textContent = w.ap_clients === 1 ? '1 device' : w.ap_clients + ' devices';
-  $('#nStaSsid').textContent = w.sta_ssid || 'Not connected';
-  $('#nStaIp').textContent = w.sta_ip || '';
-  $('#nStaRssi').innerHTML = w.sta_ssid ? `<span style="color:var(--text)">${bars(w.rssi)}</span> <span class="num">${w.rssi} dBm</span>` : (w.saved ? 'Saved: ' + esc(w.saved) : '');
-  // System page
-  const afNames = {none: 'Fixed focus', idle: 'Idle', focusing: 'Focusing', focused: 'Focused', error: 'Error'};
-  $('#sSensor').textContent = S.sensor;
-  $('#sAf').textContent = afNames[S.af] || S.af;
-  $('#sImu').textContent = S.imu.state === 'none' ? 'Not connected' : S.imu.state === 'ok' ? `OK · ${S.imu.samples} samples` : 'Calibrating';
+  const w = S.wifi, ap = apOn(w), hot = viaHotspot();
+  $('#brandHost').textContent = host();
+  $('#brandHost').title = [w.sta_ip, ap && w.ap_ip].filter(Boolean).join(' · ');
+  $('#chipWifiText').textContent = w.sta_ssid || apName();
+  // Only worth a chip when it's warm
   const t = S.temp_c, tLvl = t >= 80 ? 'bad' : t >= 70 ? 'warn' : 'ok';
+  $('#chipTemp').hidden = tLvl === 'ok';
   $('#chipTempText').textContent = t.toFixed(0) + ' °C';
   $('#chipTempText').style.color = tLvl === 'ok' ? '' : `var(--${tLvl})`;
-  $('#sTemp').innerHTML = `<span class="num">${t.toFixed(1)} °C</span> <span class="badge ${tLvl}">${{ok: 'Normal', warn: 'Warm', bad: 'Hot'}[tLvl]}</span>`;
-  $('#sUptime').textContent = fmtUp(S.uptime);
+  // WiFi page
+  $('#nStaSsid').textContent = w.sta_ssid || 'Not connected';
+  $('#nStaRssi').innerHTML = w.sta_ssid ? `${bars(w.rssi)} <span class="muted" style="font-size:12.5px">${signal(w.rssi)[1]}</span>` : '';
+  $('#nStaNote').textContent = w.sta_ssid ? 'Open the camera from any device on this network:' : w.saved ? `Can't reach ${w.saved} right now` : 'Pick your network under “Connect to a network”';
+  $('#nStaAddrs').innerHTML = w.sta_ssid ? addrHTML(`http://${host()}/`) + addrHTML(`http://${w.sta_ip}/`, 'If the first address doesn\'t open (some Android phones), use this one. Bookmark it.') : '';
+  $('#btnWifiForget').hidden = !w.saved;
+  $('#nApSsid').textContent = w.ap_ssid;
+  $('#nApState').textContent = !ap ? 'Off' : w.ap_clients ? `On · ${w.ap_clients} device${w.ap_clients > 1 ? 's' : ''}` : 'On';
+  $('#nApIp').textContent = ap ? w.ap_ip : '';
+  $('#nApNote').textContent = hot ? "You're connected through it" : ap ? 'For setup, or when your home WiFi is down' : 'Turns back on by itself if your home WiFi goes down';
+  $('#joinHint').textContent = !hot && w.sta_ssid
+    ? `You're watching through ${w.sta_ssid}. If you move the camera to another network, open it there at http://${host()}.`
+    : 'The camera remembers the network. Devices on its own WiFi may disconnect for a moment while it connects.';
+  trackJoin();
+  // Settings page
   $('#sVersion').textContent = S.version || '—';
+  $('#sTemp').innerHTML = `<span class="num">${t.toFixed(0)} °C</span> <span class="badge ${tLvl}">${{ok: 'Normal', warn: 'Warm', bad: 'Hot'}[tLvl]}</span>`;
+  const imu = S.imu || {state: 'none'};
+  $('#sImu').textContent = imu.state === 'none' ? 'Not connected' : imu.state === 'calibrating' ? 'Starting…' : imu.mag === 'none' ? 'Working (no compass)' : 'Working, with compass';
+  $('#sUptime').textContent = fmtUp(S.uptime);
+  const afNames = {none: 'Fixed focus', idle: 'Idle', focusing: 'Focusing', focused: 'In focus', error: 'Problem'};
+  $('#sSensor').textContent = S.sensor;
+  $('#sAf').textContent = afNames[S.af] || S.af;
+  $('#sMag').textContent = {none: 'None', uncalibrated: 'Not calibrated', calibrating: 'Calibrating', ok: 'Calibrated'}[imu.mag] || '—';
+  $('#sImuN').textContent = imu.state === 'none' ? '—' : `${imu.samples} · ${imu.errors} errors`;
   $('#sBuild').textContent = S.build;
+  $('#sSchema').textContent = S.schema;
   $('#sHeap').textContent = fmtBytes(S.heap);
   $('#sHeapBar').style.width = Math.min(100, S.heap / 327680 * 100) + '%';
   $('#sPsram').textContent = fmtBytes(S.psram);
   $('#sPsramBar').style.width = (S.psram / S.psram_total * 100) + '%';
-  // Live page bits that come from status
-  $('#detOn').checked = S.detect.enabled;
-  const [dT, dS] = S.sensor === 'none' ? ['No camera', 'The camera failed to start.']
-    : S.detect.ready === false ? ['Detector failed to start', 'Its self-test failed at boot. See the serial log.']
-    : S.mirror ? ['No tags in view', "Mirror is on, and tags don't decode in a mirrored image. Turn it off on the Camera page."]
-    : ['No tags in view', 'Only AprilTag 36h11 markers are detected. Print one from the Detection card.'];
-  $('#tagEmpty b').textContent = dT;
-  $('#tagEmpty span').textContent = dS;
-  $('#calState').textContent = S.detect.calibrated ? 'Calibrated' : 'Estimate';
-  if (document.activeElement !== $('#detRes')) $('#detRes').value = S.detect.res ?? 0;
-  $('#calState').title = S.detect.calibration || '';
-  $('#calHint').innerHTML = S.detect.calibrated
-    ? `Using the intrinsics and lens distortion ${S.detect.calibration === 'stored' ? 'stored on this board' : 'compiled in from <code>src/calibration.h</code>'}.`
-    : 'Distances and pose use a rough lens estimate. Send your calibration to the board with <code>scripts/push_calibration.py</code>.';
-  if (S.detect.tag_mm) $('#tagHint').textContent = `Print at 100 % scale on plain white paper and keep it flat. Distances assume the black square measures ${S.detect.tag_mm} mm.`;
+  // Live page
   const af = S.af !== 'none';
   $('#btnFocus').hidden = !af;
   $('#focusPill').hidden = !af;
   $('#focusPillText').textContent = afNames[S.af] || S.af;
-  const imuOn = S.imu.state !== 'none';
-  $('#imuBody').hidden = !imuOn;
-  $('#imuEmpty').hidden = imuOn;
-  $('#imuBadge').innerHTML = imuOn ? `<span class="badge ${S.imu.state === 'ok' ? 'ok' : 'warn'}">${S.imu.state === 'ok' ? 'Live' : 'Calibrating'}</span>` : '';
-  if (!streamPort) { streamPort = S.stream_port; setStream(page === 'live'); }
+  $('#motion').hidden = !imuOn();
+  $('#live').classList.toggle('side', imuOn());
+  if (!imuOn()) $('#headPill').hidden = true;
+  startLive();
+  if (!streamPort) { streamPort = S.stream_port; setStream(liveShown()); }
 }
 
-// ── Live: stream, detector view, overlay ──────────────
-const cam = $('#cam'), ov = $('#ov'), oc = ov.getContext('2d');
+// ── Live: the video ───────────────────────────────────
+const cam = $('#cam');
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-let streamPort = 0, grayMode = false, grayTimer = 0, streamOn = false;
+let streamPort = 0, streamOn = false, streamT0 = 0, streamBusy = false;
 function setStream(on) {
-  clearTimeout(grayTimer);
   streamOn = on && !!streamPort;
-  if (!streamOn) { cam.src = BLANK; return; }
-  if (grayMode) { refreshGray(); return; }
-  cam.classList.remove('gray');
-  cam.src = `${location.protocol}//${location.hostname}:${streamPort}/stream`;
+  streamT0 = performance.now();
+  streamBusy = false;
+  cam.src = streamOn ? `${location.protocol}//${location.hostname}:${streamPort}/stream?t=${Date.now()}` : BLANK;
 }
-function refreshGray() {
-  cam.classList.add('gray');
-  cam.src = '/debug/gray.bmp?t=' + Date.now();
-  grayTimer = setTimeout(refreshGray, 800);
+const gotFrame = () => cam.naturalWidth > 1 && !cam.src.startsWith('data:');
+// The video goes to one screen at a time and the next one waits, so a second
+// viewer would just see nothing. Tell them, and ask again once it's free.
+async function checkStream() {
+  if (!streamOn || gotFrame()) { streamBusy = false; return; }
+  const waited = performance.now() - streamT0;
+  if (waited < 3000 || !online) return;
+  try {
+    const c = await getJSON('/camera/status', 3000);
+    streamBusy = c.viewers > 0;
+    if (!streamBusy && waited > 8000) setStream(true);
+  } catch (_) {}
 }
-$('#btnGray').onclick = e => {
-  grayMode = !grayMode;
-  e.currentTarget.setAttribute('aria-pressed', grayMode);
-  setStream(page === 'live');
-};
 $('#btnShot').onclick = async () => {
   try {
     const r = await fetch('/snapshot'); if (!r.ok) throw 0;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(await r.blob());
-    a.download = 'esp32cam-' + new Date().toISOString().replace(/[:.]/g, '-') + '.jpg';
+    a.download = 'wifi-camera-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg';
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  } catch (_) { toast('Snapshot failed', 'bad'); }
+    toast('Photo saved');
+  } catch (_) { toast("Couldn't take a photo", 'bad'); }
 };
 $('#btnFull').onclick = () => { const v = $('#video'); document.fullscreenElement ? document.exitFullscreen() : v.requestFullscreen?.(); };
 $('#btnFocus').onclick = () => setCam('af', 1, 'Focusing…');
 
-let det = null, quat = [1, 0, 0, 0];
-async function pollDet() {
-  try { det = await getJSON('/detections', 2000); renderDet(); } catch (_) {}
+let emptyKey = '';
+function renderCamEmpty() {
+  const show = streamOn && !gotFrame();
+  $('#camEmpty').hidden = !show;
+  if (!show) return;
+  const [t, s] = !online ? ['The camera is offline', 'The video comes back by itself when it does.']
+    : streamBusy ? ['Someone else is watching', 'The camera shows its video on one screen at a time. It appears here as soon as they close it.']
+    : ['Starting the video…', ''];
+  if (emptyKey === t) return;
+  emptyKey = t;
+  $('#camEmptyT').textContent = t;
+  $('#camEmptyS').textContent = s;
 }
-function fresh() {
-  if (!det || det.age_ms < 0) return false;
-  return det.age_ms < Math.max(1500, 2.5 * (det.decode_ms + det.detect_ms));
-}
-// Measured rate: processed frames (seq) per device second over the last ~2 s
-const rateWin = [];
-function detHz() {
-  if (!det || !det.seq) { rateWin.length = 0; return 0; }
-  const last = rateWin[rateWin.length - 1];
-  if (last && det.seq < last.seq) rateWin.length = 0; // reboot / re-enabled
-  if (!rateWin.length || det.seq !== rateWin[rateWin.length - 1].seq) rateWin.push({ seq: det.seq, us: det.now_us - det.age_ms * 1000 }); // publish time
-  while (rateWin.length > 2 && rateWin[rateWin.length - 1].us - rateWin[1].us > 2e6) rateWin.shift();
-  const a = rateWin[0], b = rateWin[rateWin.length - 1];
-  return b.us > a.us ? (b.seq - a.seq) / ((b.us - a.us) / 1e6) : 0;
-}
-function renderDet() {
-  const tags = fresh() ? det.tags : [];
-  $('#tagCount').textContent = tags.length;
-  $('#tagCount').className = 'badge' + (tags.length ? ' acc' : '');
-  $('#tagEmpty').hidden = tags.length > 0;
-  $('#tagList').innerHTML = tags.map(({ id, pose: { tx, ty, tz, q = [1, 0, 0, 0] } }) => `<li><span class="tagid">${id}</span>
-    <div style="flex:1"><div class="big num" style="font-size:18px">${Math.hypot(tx, ty, tz).toFixed(2)} m</div>
-    <div class="muted num" style="font-size:12px">pos ${sgn(tx)} ${sgn(ty)} ${sgn(tz)} m</div>
-    <div class="muted num" style="font-size:12px">q ${q[0].toFixed(2)} ${sgn(q[1])} ${sgn(q[2])} ${sgn(q[3])}</div></div></li>`).join('');
-  if (det && det.w) $('#resPill').textContent = `${det.w} × ${det.h}`;
-  $('#detRate').textContent = detHz() && S?.detect.enabled ? detHz().toFixed(1) + ' Hz' : '—';
-  // Capture → result: the frame's age when this reply was built, minus how long
-  // ago the result was published. Both on the board's clock. ~0 or negative
-  // means the capture time was unavailable (the board fell back to grab time).
-  const lat = det && det.seq && det.age_ms >= 0 ? (det.now_us - det.t_us) / 1000 - det.age_ms : 0;
-  $('#detLat').textContent = lat > 0 && S?.detect.enabled ? Math.round(lat) + ' ms' : '—';
-  $('#detDecode').textContent = det?.decode_ms ? det.decode_ms + ' ms' : '—';
-  $('#detDetect').textContent = det?.detect_ms ? det.detect_ms + ' ms' : '—';
-}
-$('#tagId').oninput = e => {
-  const id = Math.min(586, Math.max(0, parseInt(e.target.value, 10) || 0));
-  $('#tagOpen').href = '/tag?id=' + id;
-};
-$('#detRes').onchange = async e => {
-  try { await authed('/detector/set?res=' + e.target.value, {method: 'POST'}); toast('Detection size saved'); }
-  catch (err) { toast(err.message, 'bad'); pollStatus(); }
-};
-$('#detOn').onchange = async e => {
-  const on = e.target.checked;
-  try { await authed('/detector/set?enabled=' + (on ? 1 : 0), {method: 'POST'}); toast(on ? 'Detection on' : 'Detection off'); }
-  catch (err) { e.target.checked = !on; toast(err.message, 'bad'); }
-};
 
+// ── Live: the motion sensor ───────────────────────────
+let P = null, finishing = false;
 async function pollPose() {
-  if (S && S.imu.state !== 'none') { try { quat = (await getJSON('/pose', 2000)).q; } catch (_) {} }
+  try { P = await getJSON('/pose', 2000); renderPose(); } catch (_) {}
+}
+function qrot([w, x, y, z], [a, b, c]) {
+  return [(1-2*(y*y+z*z))*a + 2*(x*y-w*z)*b + 2*(x*z+w*y)*c,
+          2*(x*y+w*z)*a + (1-2*(x*x+z*z))*b + 2*(y*z-w*x)*c,
+          2*(x*z-w*y)*a + 2*(y*z+w*x)*b + (1-2*(x*x+y*y))*c];
+}
+const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+// Sensor → East-North-Up. "Facing" = where the sensor's x axis points,
+// clockwise from north; tilt = roll and pitch.
+function poseAngles(q) {
+  const [ex, ey] = qrot(q, [1, 0, 0]);
+  const heading = (Math.atan2(ex, ey) * 180 / Math.PI + 360) % 360;
+  const [w, x, y, z] = q;
+  const roll = Math.atan2(2*(w*x+y*z), 1-2*(x*x+y*y)) * 180 / Math.PI;
+  const s = 2*(w*y-z*x), pitch = (Math.abs(s) >= 1 ? Math.sign(s) * 90 : Math.asin(s) * 180 / Math.PI);
+  return {heading, roll, pitch};
+}
+function renderPose() {
+  if (!P || P.imu === 'none') return;
+  const ready = P.imu === 'ok', mag = P.heading === 'mag';
+  const a = poseAngles(P.q);
+  const dir = DIRS[Math.round(a.heading / 45) % 8];
+  $('#motionBadge').innerHTML = ready ? '<span class="badge ok">On</span>' : '<span class="badge warn">Keep still…</span>';
+  $('#rHead').textContent = !ready ? '—' : mag ? `${dir} ${a.heading.toFixed(0)}°` : `${a.heading.toFixed(0)}°`;
+  $('#rRoll').textContent = ready ? `${a.roll.toFixed(0)}°` : '—';
+  $('#rPitch').textContent = ready ? `${a.pitch.toFixed(0)}°` : '—';
+  $('#headPill').hidden = !(ready && mag);
+  $('#headPillText').textContent = `${dir} ${a.heading.toFixed(0)}°`;
+  drawCompass(ready ? a.heading : null, mag);
+  // Compass calibration
+  const hasMag = P.mag !== 'none', calibrating = P.mag === 'calibrating';
+  $('#compassRow').hidden = !hasMag;
+  $('#compassText').textContent = calibrating ? 'Calibrating…' : P.mag === 'ok' ? 'Calibrated — the direction is accurate' : 'Not calibrated yet — the direction will drift';
+  $('#btnCalib').hidden = calibrating;
+  $('#btnCalib').textContent = P.mag === 'ok' ? 'Calibrate again' : 'Calibrate';
+  $('#calib').hidden = !calibrating;
+  if (calibrating) {
+    $('#calibBar').style.width = (P.cal * 100) + '%';
+    $('#calibPct').textContent = Math.round(P.cal * 100) + ' %';
+    if (P.cal >= 1 && !finishing) finishCalib();
+  }
+}
+async function finishCalib() {
+  finishing = true;
+  try {
+    await authed('/imu/compass?do=finish', {method: 'POST'});
+    toast('Compass calibrated');
+  } catch (e) {
+    try { await authed('/imu/compass?do=cancel', {method: 'POST'}); } catch (_) {}
+    toast("That didn't work. Move away from metal and magnets, and try again.", 'bad');
+  }
+  finishing = false;
+}
+$('#btnCalib').onclick = async () => {
+  try { await authed('/imu/compass?do=start', {method: 'POST'}); pollPose(); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+$('#btnCalibCancel').onclick = async () => {
+  try { await authed('/imu/compass?do=cancel', {method: 'POST'}); pollPose(); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+// A compass rose that turns so the top is where the camera faces
+const cc = $('#compass').getContext('2d');
+function drawCompass(heading, trusted) {
+  const c = $('#compass'), d = devicePixelRatio || 1, W = 150 * d;
+  if (c.width !== W || c.height !== W) { c.width = c.height = W; }
+  const css = getComputedStyle(root), col = v => css.getPropertyValue(v).trim();
+  const r = W / 2 - 6 * d;
+  cc.clearRect(0, 0, W, W);
+  cc.save();
+  cc.translate(W / 2, W / 2);
+  cc.strokeStyle = col('--border-strong'); cc.lineWidth = 1.5 * d;
+  cc.beginPath(); cc.arc(0, 0, r, 0, 7); cc.stroke();
+  if (heading !== null) {
+    cc.rotate(-heading * Math.PI / 180);
+    for (let i = 0; i < 72; i++) {
+      const a = i * 5 * Math.PI / 180, long = i % 6 === 0;
+      cc.strokeStyle = col(long ? '--muted' : '--border-strong'); cc.lineWidth = (long ? 1.5 : 1) * d;
+      cc.beginPath(); cc.moveTo(Math.sin(a) * r, -Math.cos(a) * r); cc.lineTo(Math.sin(a) * (r - (long ? 9 : 5) * d), -Math.cos(a) * (r - (long ? 9 : 5) * d)); cc.stroke();
+    }
+    cc.font = `600 ${13 * d}px ui-monospace,"SF Mono",Menlo,monospace`; cc.textAlign = 'center'; cc.textBaseline = 'middle';
+    cc.globalAlpha = trusted ? 1 : .35;
+    [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([l, deg]) => {
+      const a = deg * Math.PI / 180;
+      cc.fillStyle = l === 'N' ? col('--accent') : col('--text');
+      cc.fillText(l, Math.sin(a) * (r - 22 * d), -Math.cos(a) * (r - 22 * d));
+    });
+    cc.globalAlpha = 1;
+  }
+  cc.restore();
+  // Fixed marker at the top: the way the camera faces
+  cc.fillStyle = col('--accent');
+  cc.beginPath(); cc.moveTo(W / 2, 1 * d); cc.lineTo(W / 2 - 6 * d, 12 * d); cc.lineTo(W / 2 + 6 * d, 12 * d); cc.fill();
 }
 
-// Overlay: tags + IMU axes, drawn at device pixel resolution
-function sizeCanvas(c) {
-  const r = c.getBoundingClientRect(), d = devicePixelRatio || 1;
-  if (c.width !== Math.round(r.width * d) || c.height !== Math.round(r.height * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
-  return [c.width, c.height, d];
-}
-function qMat(w, x, y, z) {
-  return [[1-2*(y*y+z*z), 2*(x*y-w*z), 2*(x*z+w*y)], [2*(x*y+w*z), 1-2*(x*x+z*z), 2*(y*z-w*x)], [2*(x*z-w*y), 2*(y*z+w*x), 1-2*(x*x+y*y)]];
-}
-function qEul(w, x, y, z) {
-  const r = Math.atan2(2*(w*x+y*z), 1-2*(x*x+y*y)), s = 2*(w*y-z*x);
-  const p = Math.abs(s) >= 1 ? Math.sign(s) * Math.PI / 2 : Math.asin(s);
-  return [r, p, Math.atan2(2*(w*z+x*y), 1-2*(y*y+z*z))].map(v => v * 180 / Math.PI);
-}
-function drawOverlay() {
-  const [W, H, d] = sizeCanvas(ov);
-  oc.clearRect(0, 0, W, H);
-  if (page === 'live' && fresh() && det.tags.length) {
-    // The image is letterboxed (object-fit: contain) — map source pixels into it
-    const s = Math.min(W / det.w, H / det.h), ox = (W - det.w * s) / 2, oy = (H - det.h * s) / 2;
-    // Pose → canvas with the detector's camera model (incl. lens distortion)
-    const K = det.cam || { fx: det.w, fy: det.w, cx: det.w / 2, cy: det.h / 2, dist: [0, 0, 0, 0, 0] };
-    const [k1, k2, p1, p2, k3] = K.dist;
-    const proj = ([X, Y, Z]) => {
-      const x = X / Z, y = Y / Z, r2 = x * x + y * y, rad = 1 + r2 * (k1 + r2 * (k2 + r2 * k3));
-      const xd = x * rad + 2 * p1 * x * y + p2 * (r2 + 2 * x * x), yd = y * rad + p1 * (r2 + 2 * y * y) + 2 * p2 * x * y;
-      return [ox + (K.fx * xd + K.cx) * s, oy + (K.fy * yd + K.cy) * s];
-    };
-    placed = [];
-    for (const t of det.tags) drawTag(t, t.corners.map(([x, y]) => [ox + x * s, oy + y * s]), proj, W, H, d);
-  }
-  if (S && S.imu.state !== 'none') drawAxes(W, H, d);
-}
-// Oriented box around each tag (follows its edges in perspective) with corner
-// brackets, the tag's pose axes, and a tab with ID, position and quaternion.
-// One bright colour in both themes: it sits on video, and a dark halo keeps it
-// visible against the tag's white paper.
-const BOX = '#22d3ee', AXES = [['X', '#f87171'], ['Y', '#34d399'], ['Z', '#4da3ff']];
-const sgn = v => { const r = Math.round(v * 100) / 100; return (r < 0 ? '−' : '+') + Math.abs(r).toFixed(2); };
-let placed = []; // label rects drawn this frame
-function drawTag(t, p, proj, W, H, d) {
-  const halo = (w, col, path) => {
-    oc.lineWidth = w + 2.5 * d; oc.strokeStyle = 'rgba(0,0,0,.45)'; path(); oc.stroke();
-    oc.lineWidth = w; oc.strokeStyle = col; path(); oc.stroke();
-  };
-  const poly = pts => () => { oc.beginPath(); pts.forEach(([x, y], i) => i ? oc.lineTo(x, y) : oc.moveTo(x, y)); oc.closePath(); };
-  oc.lineJoin = oc.lineCap = 'round';
-  // Exact outline, then the same quad pushed out ~6 px along its diagonals
-  oc.fillStyle = BOX + '1f'; poly(p)(); oc.fill();
-  halo(1.5 * d, BOX, poly(p));
-  const c = p.reduce((a, [x, y]) => [a[0] + x / 4, a[1] + y / 4], [0, 0]);
-  const e = p.map(([x, y]) => { const dx = x - c[0], dy = y - c[1], n = Math.hypot(dx, dy) || 1; return [x + dx / n * 8.5 * d, y + dy / n * 8.5 * d]; });
-  oc.globalAlpha = .7; halo(1 * d, BOX, poly(e)); oc.globalAlpha = 1;
-  const edge = Math.min(...e.map((q, i) => Math.hypot(q[0] - e[(i + 1) % 4][0], q[1] - e[(i + 1) % 4][1])));
-  const k = Math.min(14 * d, edge / 3);
-  halo(3 * d, BOX, () => {
-    oc.beginPath();
-    e.forEach(([x, y], i) => {
-      for (const [nx, ny] of [e[(i + 3) % 4], e[(i + 1) % 4]]) {
-        const n = Math.hypot(nx - x, ny - y) || 1;
-        oc.moveTo(x, y); oc.lineTo(x + (nx - x) / n * k, y + (ny - y) / n * k);
-      }
-    });
-  });
-  // Pose axes from the tag centre, half a tag long (z points into the tag)
-  const [qw, qx, qy, qz] = t.pose.q || [1, 0, 0, 0], T = [t.pose.tx, t.pose.ty, t.pose.tz];
-  const R = qMat(qw, qx, qy, qz), L = (det.tag_m || .165) / 2;
-  if (T[2] > 0) {
-    const o = proj(T);
-    AXES.forEach(([lbl, col], i) => {
-      const a = proj([T[0] + R[0][i] * L, T[1] + R[1][i] * L, T[2] + R[2][i] * L]);
-      halo(2.5 * d, col, () => { oc.beginPath(); oc.moveTo(...o); oc.lineTo(...a); });
-      oc.font = `700 ${10 * d}px system-ui,sans-serif`; oc.fillStyle = col;
-      oc.fillText(lbl, a[0] + 3 * d, a[1] - 3 * d);
-    });
-    oc.fillStyle = '#fff'; oc.beginPath(); oc.arc(...o, 2.5 * d, 0, 7); oc.fill();
-  }
-  // Tab: above the box, else below, else the first free slot; on a narrow
-  // video only ID and distance (the tag list has the full pose)
-  const title = `ID ${t.id} · ${Math.hypot(...T).toFixed(2)} m`;
-  const lines = W / d < 560 ? [] : [`pos ${sgn(T[0])} ${sgn(T[1])} ${sgn(T[2])}`, `q   ${qw.toFixed(2)} ${sgn(qx)} ${sgn(qy)} ${sgn(qz)}`];
-  const TITLE = `700 ${12 * d}px system-ui,sans-serif`, MONO = `500 ${10.5 * d}px ui-monospace,SFMono-Regular,Menlo,monospace`;
-  oc.font = TITLE; const w0 = oc.measureText(title).width;
-  oc.font = MONO; const w1 = Math.max(0, ...lines.map(l => oc.measureText(l).width));
-  const tw = Math.max(w0, w1) + 16 * d, th = (lines.length ? 50 : 23) * d, gap = 4 * d, top = 48 * d;
-  const ex = e.map(q => q[0]), ey = e.map(q => q[1]);
-  const x0 = Math.min(...ex), y0 = Math.min(...ey), y1 = Math.max(...ey);
-  const lx = Math.max(gap, Math.min(x0, W - tw - gap));
-  const free = y => y >= top && y + th <= H - gap &&
-    !placed.some(([rx, ry, rw, rh]) => lx < rx + rw && lx + tw > rx && y < ry + rh && y + th > ry);
-  let ly = [y0 - th - gap, y1 + gap].find(free);
-  for (let y = top; ly === undefined && y + th <= H - gap; y += 6 * d) if (free(y)) ly = y;
-  if (ly === undefined) ly = Math.max(top, y0 - th - gap);
-  placed.push([lx, ly, tw, th]);
-  oc.fillStyle = 'rgba(6,10,14,.8)'; oc.beginPath(); oc.roundRect(lx, ly, tw, th, 7 * d); oc.fill();
-  oc.fillStyle = BOX; oc.fillRect(lx, ly + 6 * d, 2.5 * d, th - 12 * d);
-  oc.font = TITLE; oc.fillStyle = BOX; oc.fillText(title, lx + 8 * d, ly + 16 * d);
-  oc.font = MONO; oc.fillStyle = '#e7eaf0';
-  lines.forEach((l, i) => oc.fillText(l, lx + 8 * d, ly + (31 + 13 * i) * d));
-}
-function drawAxes(W, H, d) {
-  const R = qMat(...quat), cx = 56 * d, cy = H - 56 * d, len = 34 * d;
-  oc.fillStyle = 'rgba(10,12,16,.55)'; oc.beginPath(); oc.arc(cx, cy, 44 * d, 0, 7); oc.fill();
-  [[0, '#f87171', 'X'], [1, '#34d399', 'Y'], [2, '#4da3ff', 'Z']].forEach(([i, col, lbl]) => {
-    const v = [R[0][i], R[1][i], R[2][i]], k = len / (2.5 - v[2] * .6);
-    const x = cx + v[0] * k * 1.6, y = cy - v[1] * k * 1.6;
-    oc.strokeStyle = oc.fillStyle = col; oc.lineWidth = 2.5 * d; oc.lineCap = 'round';
-    oc.beginPath(); oc.moveTo(cx, cy); oc.lineTo(x, y); oc.stroke();
-    oc.font = `700 ${10 * d}px system-ui,sans-serif`; oc.fillText(lbl, x + 3 * d, y - 3 * d);
-  });
-}
-// Rolling euler plot
-const plot = $('#imuPlot'), pc = plot.getContext('2d'), HIST = 240;
-const hist = [new Float32Array(HIST), new Float32Array(HIST), new Float32Array(HIST)];
-let lastSample = 0;
-function drawPlot(now) {
-  if (now - lastSample > 50) { // 20 Hz regardless of display refresh rate
-    lastSample = now;
-    const e = qEul(...quat);
-    hist.forEach((h, i) => { h.copyWithin(0, 1); h[HIST - 1] = e[i]; });
-    $('#eR').textContent = e[0].toFixed(1) + '°'; $('#eP').textContent = e[1].toFixed(1) + '°'; $('#eY').textContent = e[2].toFixed(1) + '°';
-  }
-  const [W, H, d] = sizeCanvas(plot), css = getComputedStyle(document.documentElement);
-  pc.clearRect(0, 0, W, H);
-  pc.strokeStyle = css.getPropertyValue('--border').trim(); pc.lineWidth = d;
-  for (const g of [-90, 0, 90]) { const y = H / 2 - g / 180 * (H / 2 - 4 * d); pc.beginPath(); pc.moveTo(0, y); pc.lineTo(W, y); pc.stroke(); }
-  ['#f87171', '#34d399', '#4da3ff'].forEach((col, i) => {
-    pc.strokeStyle = col; pc.lineWidth = 1.8 * d; pc.beginPath();
-    hist[i].forEach((v, j) => { const x = j / (HIST - 1) * W, y = H / 2 - v / 180 * (H / 2 - 4 * d); j ? pc.lineTo(x, y) : pc.moveTo(x, y); });
-    pc.stroke();
-  });
-}
-function frame(now) {
+function frame() {
   if (page === 'live') {
-    // naturalWidth turns non-zero once the first MJPEG frame has decoded
-    $('#camEmpty').hidden = !streamOn || (cam.naturalWidth > 1 && cam.src !== BLANK);
-    drawOverlay();
-    if (S && S.imu.state !== 'none') drawPlot(now);
+    renderCamEmpty();
+    if (gotFrame()) $('#resPill').textContent = `${cam.naturalWidth} × ${cam.naturalHeight}`;
   }
   requestAnimationFrame(frame);
 }
 
-// ── Camera settings ───────────────────────────────────
+// ── Picture settings ──────────────────────────────────
 let C = null;
 async function loadCamera() {
-  try { C = await getJSON('/camera/status'); } catch (_) { toast('Could not read camera settings', 'bad'); return; }
-  $('#sensorName').textContent = C.sensor ? `Sensor: ${C.sensor}.` : '';
+  try { C = await getJSON('/camera/status'); } catch (_) { toast("Couldn't read the picture settings", 'bad'); return; }
   $$('[data-var]').forEach(el => {
     const v = C[el.dataset.var]; if (v === undefined) return;
+    // A value set outside the dashboard: show it rather than a wrong preset
+    if (el.tagName === 'SELECT' && ![...el.options].some(o => +o.value === v))
+      el.add(new Option(`Custom (${v})`, v));
     if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
     showVal(el);
   });
@@ -919,22 +1165,22 @@ async function loadCamera() {
 function showVal(el) { const o = $(`[data-for="${el.id}"]`); if (o) o.textContent = (el.value > 0 && el.min < 0 ? '+' : '') + el.value; }
 function renderAf(mode, state) {
   $$('#afSeg button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.af === mode));
-  const m = {focused: ['ok', 'Focused'], focusing: ['warn', 'Focusing'], idle: ['', 'Idle'], error: ['bad', 'Error']}[state] || ['', state];
+  const m = {focused: ['ok', 'In focus'], focusing: ['warn', 'Focusing'], idle: ['', 'Idle'], error: ['bad', 'Problem']}[state] || ['', state];
   $('#afState').className = 'badge ' + m[0]; $('#afState').textContent = m[1];
 }
-async function setCam(v, val, okMsg = 'Saved') {
+async function setCam(v, val, okMsg, el) {
   try {
     await authed(`/camera/set?var=${v}&val=${val}`, {method: 'POST'});
-    toast(okMsg);
+    el ? saved(el) : toast(okMsg);
     if (v === 'af' && C) { C.af = val === 1 ? C.af : val; setTimeout(loadCamera, 900); }
     return true;
-  } catch (e) { toast(e.message === 'Wrong token' || e.message === 'No token' ? e.message : `Couldn't change ${v}`, 'bad'); return false; }
+  } catch (e) { toast(/password/i.test(e.message) ? e.message : "Couldn't change that setting", 'bad'); return false; }
 }
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 $$('[data-var]').forEach(el => {
   const send = async () => {
     const val = el.type === 'checkbox' ? (el.checked ? 1 : 0) : el.value;
-    if (!(await setCam(el.dataset.var, val))) loadCamera(); // revert on failure
+    if (!(await setCam(el.dataset.var, val, '', el))) loadCamera(); // put it back on failure
   };
   if (el.type === 'range') { el.oninput = () => showVal(el); el.onchange = debounce(send, 150); }
   else el.onchange = send;
@@ -942,93 +1188,257 @@ $$('[data-var]').forEach(el => {
 $$('#afSeg button').forEach(b => b.onclick = () => setCam('af', +b.dataset.af, b.dataset.af === '1' ? 'Focusing…' : 'Focus mode saved'));
 $('#btnAfNow').onclick = () => setCam('af', 1, 'Focusing…');
 $('#btnCamReset').onclick = async () => {
-  if (!confirm('Reset all camera settings to defaults? The camera restarts.')) return;
-  try { await authed('/camera/reset', {method: 'POST'}); toast('Restarting with defaults…'); setTimeout(() => location.reload(), 9000); }
+  if (!(await ask('Reset the picture settings?', 'Size, quality, focus, light and color go back to how they came. The camera restarts.', 'Reset', true))) return;
+  try { await authed('/camera/reset', {method: 'POST'}); watchRestart('reboot'); }
   catch (e) { toast(e.message, 'bad'); }
 };
 
-// ── Network ───────────────────────────────────────────
-$('#btnScan').onclick = async e => {
-  const btn = e.currentTarget; btn.disabled = true; btn.lastChild.textContent = 'Scanning…';
-  try {
-    // The board scans in the background: ask again until it has results
-    let d = await getJSON('/wifi/scan?refresh=1', 5000);
-    for (let i = 0; d.scanning && i < 15; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      d = await getJSON('/wifi/scan', 5000);
-    }
-    if (d.scanning) throw new Error('timeout');
-    const nets = d.networks.filter(n => n.ssid).sort((a, b) => b.rssi - a.rssi);
-    $('#netEmpty').hidden = nets.length > 0;
-    if (!nets.length) $('#netEmpty').innerHTML = icon('wifi') + '<b>No networks found</b>';
-    $('#netList').innerHTML = nets.map(n => `<li data-ssid="${esc(n.ssid)}" data-enc="${n.enc}">
-      <span style="color:var(--text)">${bars(n.rssi)}</span>
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.ssid)}</span>
-      ${n.ssid === d.sta ? '<span class="badge ok">Connected</span>' : ''}${n.enc ? icon('lock', 'width:15px;height:15px;color:var(--faint)') : ''}</li>`).join('');
-  } catch (_) { toast('Scan failed', 'bad'); }
-  btn.disabled = false; btn.lastChild.textContent = 'Scan';
-};
-$('#netList').onclick = e => {
-  const li = e.target.closest('li'); if (!li || li.classList.contains('open')) return;
-  $$('#netList li.open').forEach(o => { o.classList.remove('open'); o.querySelector('.join')?.remove(); });
-  li.classList.add('open');
-  const f = document.createElement('form'); f.className = 'join';
-  f.innerHTML = (li.dataset.enc === '1' ? '<input type="password" placeholder="Password" required autocomplete="off">' : '<span class="muted" style="flex:1">Open network</span>') +
-    '<button class="btn primary sm">Connect</button><button type="button" class="btn sm ghost">Cancel</button>';
-  li.append(f); f.querySelector('input')?.focus();
-  f.lastChild.onclick = ev => { ev.stopPropagation(); li.classList.remove('open'); f.remove(); };
-  f.onsubmit = async ev => {
-    ev.preventDefault();
-    const pass = f.querySelector('input')?.value || '';
-    try {
-      await authed('/wifi/connect', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: li.dataset.ssid, pass})});
-      toast('Connecting to ' + li.dataset.ssid + '…'); li.classList.remove('open'); f.remove();
-    } catch (err) { toast(err.message, 'bad'); }
+// ── WiFi: finding and joining networks ────────────────
+let joining = null; // {ssid, t0, note, done} after /wifi/connect, until it worked or not
+async function scanNets() {
+  // The camera looks in the background: ask again until it has results
+  let d = await getJSON('/wifi/scan?refresh=1', 5000);
+  for (let i = 0; d.scanning && i < 15; i++) {
+    await sleep(1000);
+    d = await getJSON('/wifi/scan', 5000);
+  }
+  if (d.scanning) throw new Error('timeout');
+  const seen = new Set();
+  // Strongest first, each name once
+  const nets = d.networks.filter(n => n.ssid).sort((a, b) => b.rssi - a.rssi).filter(n => !seen.has(n.ssid) && seen.add(n.ssid));
+  return {nets, sta: d.sta};
+}
+function renderNets(ul, nets, sta, note, done) {
+  ul.innerHTML = nets.map(n => `<li data-ssid="${esc(n.ssid)}" data-enc="${n.enc}">
+    <span style="color:var(--text)" title="${signal(n.rssi)[1]} signal">${bars(n.rssi)}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(n.ssid)}</span>
+    ${n.ssid === sta ? '<span class="badge ok">Connected</span>' : ''}${n.enc ? icon('lock', 'width:15px;height:15px;color:var(--faint)') : ''}</li>`).join('');
+  ul.onclick = e => {
+    const li = e.target.closest('li'); if (!li || li.classList.contains('open')) return;
+    $$('li.open', ul).forEach(o => { o.classList.remove('open'); o.querySelector('.join')?.remove(); });
+    li.classList.add('open');
+    const f = document.createElement('form'); f.className = 'join';
+    f.innerHTML = (li.dataset.enc === '1' ? `<input type="password" placeholder="WiFi password for ${esc(li.dataset.ssid)}" required autocomplete="off">` : '<span class="muted" style="flex:1">No password needed</span>') +
+      '<button class="btn primary sm">Connect</button><button type="button" class="btn sm ghost">Cancel</button>';
+    li.append(f); f.querySelector('input')?.focus();
+    f.lastChild.onclick = ev => { ev.stopPropagation(); li.classList.remove('open'); f.remove(); };
+    f.onsubmit = async ev => {
+      ev.preventDefault();
+      const pass = f.querySelector('input')?.value || '';
+      try {
+        await authed('/wifi/connect', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: li.dataset.ssid, pass})});
+        joining = {ssid: li.dataset.ssid, t0: Date.now(), note, done};
+        li.classList.remove('open'); f.remove();
+        trackJoin();
+        pollStatus();
+      } catch (err) { toast(err.message, 'bad'); }
+    };
   };
+}
+function trackJoin() {
+  if (!joining || !S) return;
+  const j = joining, w = S.wifi, n = j.note, t = (Date.now() - j.t0) / 1000;
+  n.hidden = false;
+  if (w.sta_ssid === j.ssid && w.sta_ip) {
+    joining = null;
+    n.className = 'note ok';
+    n.innerHTML = `<b>Connected to ${esc(w.sta_ssid)}.</b> On that network, open <a href="http://${esc(host())}/">${esc(host())}</a> or <a href="http://${esc(w.sta_ip)}/">${esc(w.sta_ip)}</a>.`;
+    j.done?.();
+  } else if (t > 35) {
+    joining = null;
+    n.className = 'note bad';
+    n.innerHTML = `<b>Couldn't connect to ${esc(j.ssid)}.</b> Check the WiFi password and try again. The camera's own WiFi stays on meanwhile.`;
+  } else {
+    n.className = 'note';
+    n.innerHTML = `Connecting to <b>${esc(j.ssid)}</b>… this can take half a minute.` + (viaHotspot() ? ` If this device drops off ${esc(apName())} for a moment, that's normal — it reconnects.` : '');
+  }
+}
+$('#btnScan').onclick = async e => {
+  const btn = e.currentTarget; btn.disabled = true; btn.lastChild.textContent = 'Looking…';
+  try {
+    const {nets, sta} = await scanNets();
+    $('#netEmpty').hidden = nets.length > 0;
+    if (!nets.length) $('#netEmpty').innerHTML = icon('wifi') + "<b>No networks found</b><span>Move the camera closer to your router and try again.</span>";
+    renderNets($('#netList'), nets, sta, $('#joinNote'));
+  } catch (_) { toast("Couldn't look for networks. Try again.", 'bad'); }
+  btn.disabled = false; btn.lastChild.textContent = 'Find networks';
 };
+$('#btnWifiForget').onclick = () => resetScope('wifi');
 
-// ── System ────────────────────────────────────────────
+// ── Setup: password → home WiFi → done ────────────────
+function setupStep(step) {
+  for (const [id, s] of [['#stepPass', 'pass'], ['#stepWifi', 'wifi'], ['#stepDone', 'done']]) $(id).hidden = s !== step;
+  const order = ['pass', 'wifi', 'done'];
+  $$('#steps li').forEach(li => {
+    const i = order.indexOf(li.dataset.step), at = order.indexOf(step);
+    li.className = i === at ? 'on' : i < at ? 'done' : '';
+  });
+  if (step === 'wifi') setupScan();
+}
+async function setupEnter() {
+  if (!S) { try { S = await getJSON('/status'); } catch (_) { return; } }
+  const claiming = S.auth === false;
+  if (claiming || !store.get()) {
+    $('#passTitle').textContent = claiming ? 'Welcome to your camera' : 'Enter your camera\'s password';
+    $('#passText').textContent = claiming
+      ? "First, choose a password. You'll need it whenever you change a setting, so pick one you'll remember."
+      : 'The one you chose when you first set up the camera.';
+    $('#pass2Row').hidden = !claiming;
+    $('#pass1').autocomplete = claiming ? 'new-password' : 'current-password';
+    setupStep('pass');
+  } else if (!S.wifi.sta_ssid) {
+    setupStep('wifi');
+  } else {
+    setupDone(S.wifi.sta_ssid);
+  }
+}
+$('#passForm').onsubmit = async e => {
+  e.preventDefault();
+  const p1 = $('#pass1').value, claiming = S?.auth === false;
+  if (claiming) {
+    if (p1.length < 8 || /\s/.test(p1)) return toast('Use at least 8 characters, without spaces', 'bad');
+    if (p1 !== $('#pass2').value) return toast("The two passwords don't match", 'bad');
+    try {
+      const r = await fetch('/auth/claim', {method: 'POST', headers: {'X-Claim': '1'}, body: p1});
+      if (!r.ok) throw new Error(await r.text());
+    } catch (err) { return toast(/already/i.test(err.message) ? 'This camera already has a password' : "Couldn't save the password: " + err.message, 'bad'); }
+    store.set(p1);
+    toast('Password saved');
+  } else {
+    let r;
+    try { r = await fetch('/auth', {headers: {'X-Token': p1}}); } catch (_) { return toast("Can't reach the camera", 'bad'); }
+    if (r.status === 401) return toast("That password isn't right", 'bad');
+    store.set(p1);
+  }
+  $('#pass1').value = $('#pass2').value = '';
+  try { S = await getJSON('/status'); } catch (_) {}
+  S?.wifi.sta_ssid ? setupDone(S.wifi.sta_ssid) : setupStep('wifi');
+};
+async function setupScan() {
+  $('#setupNetsEmpty').hidden = false;
+  $('#setupNetsEmpty').innerHTML = icon('refresh') + '<b>Looking for networks…</b>';
+  $('#setupNetsEmpty svg').classList.add('spin');
+  $('#setupNets').innerHTML = '';
+  try {
+    const {nets, sta} = await scanNets();
+    $('#setupNetsEmpty').hidden = nets.length > 0;
+    if (!nets.length) $('#setupNetsEmpty').innerHTML = icon('wifi') + '<b>No networks found</b><span>Move the camera closer to your router, then search again.</span>';
+    renderNets($('#setupNets'), nets, sta, $('#setupJoinNote'), () => setTimeout(() => setupDone(S.wifi.sta_ssid), 1200));
+  } catch (_) {
+    $('#setupNetsEmpty').innerHTML = icon('alert') + "<b>Couldn't look for networks</b><span>Search again in a moment.</span>";
+  }
+}
+$('#setupRescan').onclick = setupScan;
+$('#setupSkip').onclick = () => { local.set('setupSkipped', '1'); setupDone(null); };
+function setupDone(ssid) {
+  setupStep('done');
+  if (ssid) {
+    $('#doneTitle').textContent = `Your camera is on ${ssid}`;
+    $('#doneText').textContent = `To watch it from now on, connect your phone or computer to ${ssid} and open:`;
+    $('#doneAddrs').innerHTML = addrHTML(`http://${host()}/`) + addrHTML(`http://${S.wifi.sta_ip}/`, "If the first one doesn't open (some Android phones), use this one.");
+    $('#doneTip').textContent = `Bookmark it or add it to your home screen. The camera's own WiFi, ${apName()}, turns off by itself once nobody uses it, and comes back if your home WiFi is ever down.`;
+    $('#setupFinish').textContent = viaHotspot() ? 'Watch now (on the camera\'s WiFi)' : 'Open the camera';
+  } else {
+    $('#doneTitle').textContent = 'Ready to use';
+    $('#doneText').textContent = `Watch the camera whenever this device is connected to ${apName()}, at:`;
+    $('#doneAddrs').innerHTML = addrHTML(`http://${S?.wifi.ap_ip || '192.168.4.1'}/`);
+    $('#doneTip').textContent = 'You can connect it to your home WiFi any time under WiFi.';
+    $('#setupFinish').textContent = 'Open the camera';
+  }
+}
+$('#setupFinish').onclick = () => { location.hash = '#live'; };
+
+// ── Settings ──────────────────────────────────────────
 function renderTok() {
   const has = !!store.get();
-  $('#tokState').textContent = has ? 'Saved in this browser' : 'Not set — you will be asked when needed';
-  $('#btnTokSet').textContent = has ? 'Change' : 'Enter token';
+  $('#tokState').textContent = has ? 'Remembered in this browser' : 'Not remembered — you\'ll be asked when needed';
+  $('#btnTokSet').textContent = has ? 'Change' : 'Enter password';
   $('#btnTokForget').hidden = !has;
 }
-$('#btnTokSet').onclick = async () => { if (await askToken()) toast('Token saved'); };
-$('#btnTokForget').onclick = () => { store.clear(); toast('Token forgotten'); };
+$('#btnTokSet').onclick = async () => { if (await askToken()) { try { await authed('/auth'); toast('Password accepted'); } catch (e) { toast(e.message, 'bad'); } } };
+$('#btnTokForget').onclick = () => { store.clear(); toast('This browser forgot the password'); };
 $('#btnReboot').onclick = async () => {
-  if (!confirm('Reboot the camera now?')) return;
-  try { await authed('/system/reboot', {method: 'POST'}); toast('Rebooting…'); setTimeout(() => location.reload(), 9000); }
+  if (!(await ask('Restart the camera?', 'The video stops for about ten seconds. This page reconnects by itself.', 'Restart'))) return;
+  try { await authed('/system/reboot', {method: 'POST'}); watchRestart('reboot'); }
   catch (e) { toast(e.message, 'bad'); }
 };
+function resetText(scope) {
+  const w = S?.wifi || {}, ap = apName();
+  return {
+    camera: ['Reset the picture settings?', 'Size, quality, focus, light and color go back to how they came.'],
+    wifi: ['Forget the home WiFi?', `The camera disconnects from ${w.saved || 'your WiFi'} and only offers its own WiFi, ${ap}, until you connect it again.` + (!viaHotspot() && w.sta_ssid ? ` You'll lose this page: join ${ap} to reach the camera.` : '')],
+    imu: ['Reset the compass calibration?', 'The direction will drift until you calibrate the compass again.'],
+    token: ['Reset the password?', "Anyone who opens the camera's page can then choose a new one, so set it right away."],
+    all: ['Factory reset?', `Everything goes back to how it came: picture settings, WiFi, compass and password. Afterwards, join ${ap} to set the camera up again.`],
+  }[scope];
+}
+async function resetScope(scope) {
+  const [title, text] = resetText(scope);
+  if (!(await ask(title, text + ' The camera restarts.', 'Reset', true))) return;
+  try {
+    await authed('/settings/reset?scope=' + scope, {method: 'POST'});
+    if (scope === 'token' || scope === 'all') store.clear();
+    if (scope === 'all' || scope === 'wifi') local.set('setupSkipped', '');
+    watchRestart('reboot');
+  } catch (e) { toast(e.message, 'bad'); }
+}
+$('#btnResetScope').onclick = () => resetScope($('#resetScope').value);
+
+// Software update. The file is checked first: the camera only finds out it's
+// the wrong file after it has been written.
+const OTA_SLOT = 0x640000; // default_16MB.csv app partitions
+const FACTORY_MSG = name => `${name} is the full installer for a USB cable. Choose the other .bin file, without "factory" in its name.`;
+async function checkImage(file) {
+  if (!/\.bin$/i.test(file.name)) return `${file.name} isn't an update file. Choose the file ending in .bin.`;
+  if (file.size > OTA_SLOT) return /factory|merged/i.test(file.name) ? FACTORY_MSG(file.name) : `${file.name} is too big to be an update for this camera.`;
+  const h = new DataView(await file.slice(0, 48).arrayBuffer());
+  if (h.byteLength < 48 || h.getUint8(0) !== 0xE9) return `${file.name} isn't an update for this camera.`;
+  if (h.getUint16(12, true) !== 9) return `${file.name} is for a different kind of board.`;
+  // esp_app_desc_t right after the image and segment headers; the bootloader
+  // at the start of a -factory image has none
+  if (h.getUint32(32, true) !== 0xABCD5432) return /factory|merged/i.test(file.name) ? FACTORY_MSG(file.name) : `${file.name} isn't an update for this camera.`;
+  return '';
+}
+let uploading = false;
+addEventListener('beforeunload', e => { if (uploading) { e.preventDefault(); e.returnValue = ''; } });
 const drop = $('#drop'), otaFile = $('#otaFile');
 drop.onclick = () => otaFile.click();
 drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); otaFile.click(); } };
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('drag'); };
 drop.ondragleave = () => drop.classList.remove('drag');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('drag'); upload(e.dataTransfer.files[0]); };
-otaFile.onchange = () => upload(otaFile.files[0]);
+otaFile.onchange = () => { upload(otaFile.files[0]); otaFile.value = ''; };
 async function upload(file) {
-  if (!file || !file.name.endsWith('.bin')) { toast('Choose a .bin firmware file', 'bad'); return; }
-  // Check the token first: a board that rejects an upload just drops the
+  if (!file) return;
+  if (uploading || R) { toast('Wait for the camera to finish what it\'s doing', 'bad'); return; }
+  const bad = await checkImage(file);
+  if (bad) { toast(bad, 'bad'); return; }
+  // Check the password first: a camera that refuses an upload just drops the
   // connection, which the browser reports as a network error, not a 401
   try { await authed('/auth'); } catch (e) { toast(e.message, 'bad'); return; }
   const prog = $('#otaProg'), bar = $('#otaBar'), pct = $('#otaPct'), txt = $('#otaText');
-  prog.hidden = false; txt.textContent = 'Uploading ' + file.name; bar.style.width = '0'; pct.textContent = '0%';
+  prog.hidden = false; txt.textContent = `Sending the update (${fmtBytes(file.size)})…`; bar.style.width = '0'; pct.textContent = '0%';
+  uploading = true;
+  notice = null;
+  renderBanner();
+  const done = msg => { uploading = false; if (msg) txt.textContent = msg; };
   const x = new XMLHttpRequest();
   x.open('POST', '/ota');
+  x.timeout = 180000;
   x.setRequestHeader('Content-Type', 'application/octet-stream');
   x.setRequestHeader('X-Token', store.get());
   x.upload.onprogress = e => { if (e.lengthComputable) { const p = e.loaded / e.total * 100 | 0; bar.style.width = p + '%'; pct.textContent = p + '%'; } };
   x.onload = () => {
-    if (x.status === 200) { txt.textContent = 'Installed — restarting…'; bar.style.width = '100%'; setTimeout(() => location.reload(), 10000); }
-    else { if (x.status === 401) store.clear(); txt.textContent = 'Failed: ' + (x.responseText || x.status); }
+    if (x.status === 200) { done('Installing the update…'); bar.style.width = '100%'; pct.textContent = ''; watchRestart('ota'); }
+    else { if (x.status === 401) store.clear(); done("The update didn't go through (" + (x.responseText || x.status) + '). The camera works as before — try again.'); }
   };
-  x.onerror = () => { txt.textContent = 'Upload interrupted — the connection dropped. Check the board is reachable and try again'; };
+  x.onerror = () => done('The connection dropped while sending. The camera works as before — move closer and try again.');
+  x.ontimeout = () => done('Sending took too long. The camera works as before — move closer and try again.');
   x.send(file);
 }
 
 // ── Start ─────────────────────────────────────────────
+renderTheme();
 renderTok();
 route();
 pollStatus();

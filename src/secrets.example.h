@@ -12,4 +12,4 @@
 #define API_TOKEN "change-me"
 
 // Optional: override the always-on access point's password (min 8 chars).
-// #define AP_PASS "esp32cam1"
+// #define AP_PASS "wificamera"

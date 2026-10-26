@@ -1,16 +1,12 @@
 #include "auth.h"
 #include "board.h"
-#include "calibration_store.h"
 #include "camera.h"
-#include "camera_profile.h"
 #include "config.h"
-#include "detector.h"
 #include "focus.h"
 #include "http_server.h"
 #include "imu.h"
 #include "led.h"
 #include "ota_health.h"
-#include "push.h"
 #include "settings.h"
 #include "system.h"
 #include "wifi_mgr.h"
@@ -45,14 +41,11 @@ void setup() {
 
   board_init(); // I²C bus, camera power
 
-  imu_init();
+  imu_init(); // LSM6DSOX (+ LIS3MDL); absent → skipped
   const bool cam_ok = camera_init();
   if (cam_ok) {
     focus_init();     // OV5640 only; ~0.2 s to upload the AF firmware
     camera_restore(); // settings saved from the dashboard
-    calibration_load();
-    detector_init();
-    camera_on_stream_frame(detector_offer);
   } else {
     Serial.println("[boot] no camera — dashboard, IMU and OTA still run");
   }
@@ -67,13 +60,9 @@ void setup() {
   wifi_start();
   http_start();
 
-  // Tasks start last so bring-up runs uncontended (see Task layout in config.h)
-  push_start(NET_CORE, PRIO_PUSH);
-  imu_start(APP_CORE, PRIO_IMU);
-  if (cam_ok)
-    detector_start(APP_CORE, PRIO_DETECT, DETECT_PERIOD_MS);
+  imu_start(APP_CORE, PRIO_IMU); // last, so bring-up runs uncontended
   led_set(cam_ok ? LED_IDLE : LED_ERROR);
-  Serial.println("[ready]  ?=stats  t=toggle-detector  T=forget-token");
+  Serial.println("[ready]  ?=stats  T=forget-token");
 }
 
 void loop() {
@@ -90,8 +79,6 @@ void loop() {
     char c = Serial.read();
     if (c == '?')
       print_stats();
-    if (c == 't')
-      detector_toggle();
     if (c == 'T') { // physical access: forget a claimed token
       auth_forget();
       Serial.println("[auth] token forgotten, restarting");
@@ -102,8 +89,7 @@ void loop() {
   static uint32_t last_ms = 0;
   if (millis() - last_ms >= 250) { // housekeeping that isn't worth a task
     last_ms = millis();
-    camera_profile_update(); // stream/detection size, see camera.h
-    wifi_tick();             // hotspot off while STA is up
+    wifi_tick();       // hotspot off while STA is up
     ota_health_tick(); // confirm a new OTA image once it has proved itself
   }
   delay(10);

@@ -17,13 +17,13 @@
 #endif
 
 // ── WiFi – Access Point (always-on direct connect) ───────────────────────────
-#define AP_SSID "GripLink-Cam"
+#define AP_SSID "Wifi-Camera"
 #ifndef AP_PASS
-#define AP_PASS "esp32cam1"
+#define AP_PASS "wificamera"
 #endif
 
 // Reachable as http://<HOSTNAME>.local on the router's network (mDNS)
-#define HOSTNAME "esp32cam"
+#define HOSTNAME "wifi-camera"
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 // The MJPEG stream gets its own server: an ESP-IDF httpd instance runs every
@@ -34,26 +34,21 @@
 // ── Task layout ──────────────────────────────────────────────────────────────
 // Core 0 (radio): the SDK already pins WiFi (prio 23), esp_timer (22), lwIP
 //   (18) and the camera DMA task here. Both HTTP servers join them, so all
-//   network I/O stays on one core and never competes with vision work.
-// Core 1 (sensing): the IMU task samples at 104 Hz and preempts the AprilTag
-//   detector, which soaks up the rest of the core. Its apriltag worker
-//   threads (DETECT_THREADS, same low priority) are unpinned, so they also
-//   use core 0's idle time. Arduino loop() (prio 1) only handles serial.
+//   network I/O stays on one core.
+// Core 1: the IMU task (samples at 52 Hz, short and periodic), the status LED
+//   and Arduino loop() (prio 1: serial, autofocus, housekeeping). The camera
+//   needs no core of its own: JPEG is encoded in the sensor and capture is DMA.
 #define NET_CORE 0
 #define APP_CORE 1
 
 #define PRIO_HTTP_CTRL 6   // dashboard, JSON, OTA
 #define PRIO_HTTP_STREAM 5 // MJPEG
 #define PRIO_IMU 10        // short, periodic, must not miss samples
-#define PRIO_DETECT 2      // long, CPU-bound, runs whenever the IMU is idle
 #define PRIO_LED 1         // status LED, 50 Hz tick
-#define PRIO_PUSH 3        // UDP subscriptions: a datagram now and then
-
-#define DETECT_PERIOD_MS 33 // 30 Hz cap; frames are shared with the stream
-#define DETECT_THREADS 2    // apriltag workers, unpinned: both cores help
 
 // ── I²C ──────────────────────────────────────────────────────────────────────
-// AXP313A, LSM6DSOX and the OV2640's SCCB all share this one bus.
+// AXP313A, the camera's SCCB and the optional IMU board (LSM6DSOX + LIS3MDL)
+// share this one bus.
 #define I2C_SDA 1
 #define I2C_SCL 2
 #define I2C_FREQ 400000
@@ -62,8 +57,8 @@
 #define LED_PIN 21 // FireBeetle 2 user LED (LED_BUILTIN)
 
 // Which frame the camera driver hands out when several are queued. Latest
-// drops the older ones: the stream and the detector see the newest frame, so
-// lag stays near one frame interval, at the price of occasionally skipping one.
+// drops the older ones: the stream sees the newest frame, so lag stays near
+// one frame interval, at the price of occasionally skipping one.
 // 0 = every frame in order (up to fb_count-1 frames of extra lag).
 #define CAM_GRAB_LATEST 1
 

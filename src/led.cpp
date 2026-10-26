@@ -1,6 +1,5 @@
 #include "led.h"
 #include "config.h"
-#include "detector.h"
 #include <Arduino.h>
 
 static volatile LedMode _mode = LED_BOOT;
@@ -15,12 +14,6 @@ static const uint16_t PATTERNS[][5] = {
     {40, 40, 0},              // LED_OTA
 };
 
-static bool tag_in_view() {
-  const DetectionFrame f = detector_latest();
-  // Stale frames (detector disabled or stalled) don't count
-  return f.count > 0 && millis() - f.ms < 1500;
-}
-
 static void led_task(void *) {
   pinMode(LED_PIN, OUTPUT);
   int step = 0;
@@ -33,16 +26,12 @@ static void led_task(void *) {
       step = 0;
       step_start = millis();
     }
-    if (mode == LED_IDLE && tag_in_view()) {
-      digitalWrite(LED_PIN, HIGH);
-    } else {
-      const uint16_t *p = PATTERNS[mode];
-      if (millis() - step_start >= p[step]) {
-        step = p[step + 1] ? step + 1 : 0;
-        step_start = millis();
-      }
-      digitalWrite(LED_PIN, step % 2 == 0 ? HIGH : LOW);
+    const uint16_t *p = PATTERNS[mode];
+    if (millis() - step_start >= p[step]) {
+      step = p[step + 1] ? step + 1 : 0;
+      step_start = millis();
     }
+    digitalWrite(LED_PIN, step % 2 == 0 ? HIGH : LOW);
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }

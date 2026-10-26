@@ -46,7 +46,7 @@ tasks:
       - pio run -e {{.ENV}}
 
   test:
-    desc: "Unit tests on this machine (camera model, tag pose) — no board needed"
+    desc: "Unit tests on this machine (token rules, VQF + compass) — no board needed"
     cmds:
       - pio test -e native
 

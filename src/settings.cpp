@@ -14,6 +14,16 @@ static void clear_ns(const char *ns) {
   }
 }
 
+// Brings flash written by an older firmware up to SETTINGS_SCHEMA, oldest step
+// first. Schema 0 → 1 changes nothing: an unversioned flash already used the
+// v1 layout.
+static void migrate(int from) {
+  if (from < 2) { // the tag detector was removed: drop its data
+    clear_ns("det");
+    clear_ns("calib");
+  }
+}
+
 void settings_init() {
   Preferences prefs;
   if (!prefs.begin(settings::SYS, false))
@@ -25,10 +35,7 @@ void settings_init() {
     Serial.printf("[settings] schema %d is newer than this firmware (%d)\n",
                   _stored_schema, SETTINGS_SCHEMA);
   } else if (_stored_schema < SETTINGS_SCHEMA) {
-    // Migrations go here, oldest first, e.g.
-    //   if (_stored_schema < 2) { /* rename a key in settings::CAMERA */ }
-    // Schema 0 → 1 changes nothing: an unversioned flash already used the
-    // v1 layout.
+    migrate(_stored_schema);
     prefs.putInt("schema", SETTINGS_SCHEMA);
     _stored_schema = SETTINGS_SCHEMA;
   }
@@ -44,10 +51,6 @@ bool settings_reset(const char *scope) {
     clear_ns(settings::CAMERA);
     known = true;
   }
-  if (all || !strcmp(scope, "detector")) {
-    clear_ns(settings::DETECT);
-    known = true;
-  }
   if (all || !strcmp(scope, "token")) {
     auth_forget();
     known = true;
@@ -56,8 +59,8 @@ bool settings_reset(const char *scope) {
     clear_ns(settings::WIFI);
     known = true;
   }
-  if (all || !strcmp(scope, "calibration")) {
-    clear_ns(settings::CALIB);
+  if (all || !strcmp(scope, "imu")) {
+    clear_ns(settings::IMU);
     known = true;
   }
   return known;

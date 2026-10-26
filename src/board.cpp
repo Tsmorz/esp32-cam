@@ -7,8 +7,8 @@
 static DFRobot_AXP313A axp;
 
 void board_init() {
-  // One I²C bus: AXP313A, LSM6DSOX and — once camera_init() joins it — the
-  // camera's SCCB
+  // One I²C bus: AXP313A, the IMU board and — once camera_init() joins it —
+  // the camera's SCCB
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
   Wire.setTimeOut(50); // prevent I2C hangs if bus is stuck
 

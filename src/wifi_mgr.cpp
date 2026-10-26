@@ -1,6 +1,7 @@
 #include "wifi_mgr.h"
 #include "config.h"
 #include "settings.h"
+#include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -9,6 +10,25 @@ static const uint32_t AP_OFF_AFTER_MS = 30000; // STA up this long → drop AP
 static const uint32_t AP_ON_AFTER_MS = 15000;  // STA down this long → AP back
 
 static String _saved_ssid; // network picked in the dashboard, if any
+
+// Captive portal: while the hotspot is on, every name resolves to the camera,
+// so a phone that joins it opens the dashboard by itself ("Sign in to
+// network"); http_server.cpp redirects the phone's connectivity checks.
+// Created and deleted with the hotspot: DNSServer::stop() leaves its UDP
+// socket bound (AsyncUDP::close() only disconnects), so it would keep
+// answering on the home network; deleting it removes the socket.
+static DNSServer *_dns = nullptr;
+
+static void portal(bool on) {
+  if (on && !_dns) {
+    _dns = new DNSServer();
+    if (_dns->start(53, "*", WiFi.softAPIP()))
+      Serial.println("[ap]  captive portal on");
+  } else if (!on && _dns) {
+    delete _dns;
+    _dns = nullptr;
+  }
+}
 
 const char *wifi_saved_ssid() { return _saved_ssid.c_str(); }
 
@@ -48,6 +68,7 @@ void wifi_start() {
   WiFi.softAP(AP_SSID, AP_PASS);
   Serial.printf("[ap]  SSID: %s  http://%s\n", AP_SSID,
                 WiFi.softAPIP().toString().c_str());
+  portal(true);
 
   // A network picked in the dashboard wins; secrets.h is the fallback
   Preferences prefs;
@@ -102,12 +123,14 @@ void wifi_tick() {
   const uint32_t held = millis() - since_ms;
   if (sta_up && ap_on && WiFi.softAPgetStationNum() == 0 &&
       held >= AP_OFF_AFTER_MS) {
+    portal(false);
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     Serial.println("[ap]  off — STA is up");
   } else if (!sta_up && !ap_on && held >= AP_ON_AFTER_MS) {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(AP_SSID, AP_PASS);
+    portal(true);
     Serial.println("[ap]  on — STA is down");
   }
 }

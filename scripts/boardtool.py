@@ -16,8 +16,8 @@ def token_from_secrets():
 
 
 def add_board_args(ap: argparse.ArgumentParser):
-    ap.add_argument("-H", "--host", default="esp32cam.local",
-                    help="board address (default: esp32cam.local; its AP is 192.168.4.1)")
+    ap.add_argument("-H", "--host", default="wifi-camera.local",
+                    help="board address (default: wifi-camera.local; its AP is 192.168.4.1)")
     ap.add_argument("--token", default=None,
                     help="API token (default: API_TOKEN from src/secrets.h)")
 

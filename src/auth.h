@@ -1,6 +1,6 @@
 #pragma once
 
-// The API token that protects every state-changing route and the UDP push.
+// The API token that protects every state-changing route.
 //
 // A build with API_TOKEN in secrets.h uses that, and also keeps it in flash,
 // so the next build without secrets.h (every CI and release binary) still

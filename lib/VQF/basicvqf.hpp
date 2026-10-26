@@ -1,25 +1,33 @@
 #pragma once
-// BasicVQF — 6D orientation (gyro + accel, no magnetometer, no bias
-// estimation). Port of BasicVQF from Laidig & Seel (2023) "VQF: Highly
+// BasicVQF — 6D (gyro + accel) and 9D (+ magnetometer) orientation, no bias
+// estimation. Port of BasicVQF from Laidig & Seel (2023) "VQF: Highly
 // Accurate IMU Orientation Estimation with Bias Estimation and Magnetic
 // Disturbance Rejection", https://github.com/dlaidig/vqf
 //
 // The gyroscope is integrated into gyrQuat. Accelerometer samples are rotated
 // into that almost-inertial frame *before* low-pass filtering, so the filter
 // does not lag behind rotations. The filtered gravity direction then drives
-// an inclination correction (accQuat). Output = accQuat ⊗ gyrQuat.
+// an inclination correction (accQuat). 6D output = accQuat ⊗ gyrQuat.
 //
-// Heading (yaw) is unobservable without a magnetometer: gyro bias must be
-// removed by the caller or yaw will drift.
+// The magnetometer only corrects heading: each sample is rotated into the 6D
+// Earth frame, its horizontal direction gives the heading error, and a
+// first-order filter (tauMag) tracks it as delta. 9D output = a rotation by
+// delta about the vertical ⊗ the 6D output, in an East-North-Up frame.
+// Without magnetometer samples yaw comes from the gyro alone and drifts, so
+// gyro bias must be removed by the caller.
 
 #include <cmath>
 #include <cstring>
 
 class BasicVQF {
 public:
-  // gyrTs: sample period [s]; tauAcc: accel low-pass time constant [s]
-  explicit BasicVQF(double gyrTs, double tauAcc = 3.0)
-      : _ts(gyrTs), _tauAcc(tauAcc) {
+  // gyrTs: gyro sample period [s]; tauAcc: accel low-pass time constant [s];
+  // magTs: magnetometer sample period [s] (≤ 0: same as the gyro); tauMag:
+  // heading correction time constant [s]
+  explicit BasicVQF(double gyrTs, double tauAcc = 3.0, double magTs = -1.0,
+                    double tauMag = 9.0)
+      : _ts(gyrTs), _tauAcc(tauAcc), _magTs(magTs > 0 ? magTs : gyrTs),
+        _tauMag(tauMag), _kMag(gainFromTau(tauMag, _magTs)) {
     filterCoeffs(tauAcc, gyrTs, _accLpB, _accLpA);
     reset();
   }
@@ -31,6 +39,8 @@ public:
     _accLpState[0] = NAN; // NaN = still averaging the first tauAcc seconds
     _accLpState[1] = NAN;
     _lastAccLp[0] = _lastAccLp[1] = _lastAccLp[2] = 0.0;
+    _delta = 0.0;
+    _kMagInit = 1.0;
   }
 
   // gyr: angular velocity [rad/s]; acc: specific force [m/s²] (body frame)
@@ -39,11 +49,53 @@ public:
     updateAcc(acc);
   }
 
+  // mag: magnetic field in the same body frame as gyr/acc (any unit; hard- and
+  // soft-iron corrected by the caller). [0, 0, 0] is ignored.
+  void updateMag(const double mag[3]) {
+    if (mag[0] == 0.0 && mag[1] == 0.0 && mag[2] == 0.0)
+      return;
+    double q6[4], magEarth[3];
+    getQuat6D(q6);
+    quatRotate(q6, mag, magEarth);
+    double dis = wrap(std::atan2(magEarth[0], magEarth[1]) - _delta);
+    double k = _kMag;
+    // Converge quickly at first: the gain is at least 1/N for the first N
+    // samples, until tauMag has passed
+    if (_kMagInit != 0.0) {
+      if (k < _kMagInit)
+        k = _kMagInit;
+      _kMagInit = _kMagInit / (_kMagInit + 1.0);
+      if (_kMagInit * _tauMag < _magTs)
+        _kMagInit = 0.0;
+    }
+    _delta = wrap(_delta + k * dis);
+  }
+
   // Orientation of the sensor relative to the Earth frame (z up), [w, x, y, z]
   void getQuat6D(double out[4]) const { quatMul(_accQuat, _gyrQuat, out); }
 
+  // As getQuat6D, with heading from the magnetometer: East-North-Up
+  void getQuat9D(double out[4]) const {
+    double q[4];
+    getQuat6D(q);
+    const double c = std::cos(_delta / 2), s = std::sin(_delta / 2);
+    out[0] = c * q[0] - s * q[3];
+    out[1] = c * q[1] - s * q[2];
+    out[2] = c * q[2] + s * q[1];
+    out[3] = c * q[3] + s * q[0];
+  }
+
+  // Heading correction the magnetometer applies to the 6D output [rad]
+  double getDelta() const { return _delta; }
+
+  // Converge quickly again, as after reset(), e.g. once the magnetometer's
+  // calibration has changed (not in the reference implementation)
+  void restartHeading() { _kMagInit = 1.0; }
+
 private:
   double _ts, _tauAcc;
+  double _magTs, _tauMag, _kMag;
+  double _delta, _kMagInit;
   double _gyrQuat[4];
   double _accQuat[4];
   double _accLpB[3] = {}, _accLpA[2] = {};
@@ -98,6 +150,22 @@ private:
     }
     quatMul(corr, _accQuat, _accQuat);
     quatNorm(_accQuat);
+  }
+
+  static double gainFromTau(double tau, double ts) {
+    if (tau < 0.0)
+      return 0.0; // disabled
+    if (tau == 0.0)
+      return 1.0; // no filtering
+    return 1.0 - std::exp(-ts / tau);
+  }
+
+  static double wrap(double a) {
+    if (a > M_PI)
+      return a - 2 * M_PI;
+    if (a < -M_PI)
+      return a + 2 * M_PI;
+    return a;
   }
 
   // Second-order Butterworth low-pass, as in the reference implementation

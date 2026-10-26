@@ -2,7 +2,7 @@
 #include <stddef.h>
 
 // What may be used as the API token: 8–64 printable ASCII characters, no
-// spaces (it travels in an HTTP header and a UDP datagram). Header-only, no
+// spaces (it travels in an HTTP header). Header-only, no
 // Arduino: host-tested.
 static constexpr size_t TOKEN_MIN = 8, TOKEN_MAX = 64;
 
