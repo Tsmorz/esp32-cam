@@ -60,14 +60,14 @@ int camera_stream_viewers() { return _viewers; }
 camera_fb_t *camera_fb_get_at_stream_size() {
   const resolution_info_t &want = resolution[_user_fs];
   camera_fb_t *fb = nullptr;
-  // After a size change the queued frames are still the old size
-  for (int i = 0; i < 6; i++) {
+  // After a size change the queued frames (fb_count) are still the old size.
+  // Runs on the control httpd task, so it doesn't wait beyond those.
+  for (int i = 0; i < 3; i++) {
     fb = esp_camera_fb_get();
     if (!fb || (fb->width == want.width && fb->height == want.height))
       break;
     esp_camera_fb_return(fb);
     fb = nullptr;
-    vTaskDelay(pdMS_TO_TICKS(30));
   }
   return fb;
 }

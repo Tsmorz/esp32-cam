@@ -20,8 +20,11 @@ void board_init() {
       delay(200);
   }
   if (axp_found) {
-    axp.enableCameraPower(axp.eOV2640);
-    Serial.println("[axp] camera power enabled");
+    if (axp.enableCameraPower(axp.eOV2640))
+      Serial.println("[axp] camera power enabled");
+    else
+      Serial.println(
+          "[axp] couldn't read the power register — rails untouched");
     delay(200);
   } else {
     Serial.println("[axp] not found — assuming V1.1+ (no PMIC)");

@@ -12,3 +12,4 @@ enum LedMode {
 
 void led_start(BaseType_t core, UBaseType_t prio);
 void led_set(LedMode mode);
+void led_restore(); // after LED_OTA: back to what it showed before

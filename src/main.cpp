@@ -30,11 +30,45 @@ static void print_stats() {
   Serial.println("=============");
 }
 
+// The BOOT button held RESET_HOLD_MS: forget the password, for someone who
+// forgot it (no terminal needed). The LED blinks fast once it's held long
+// enough; it acts on release, because a reset while GPIO0 is held low starts
+// the ROM's USB downloader instead of the firmware.
+static void reset_button_tick() {
+  static uint32_t down_ms = 0; // 0 = not pressed
+  static bool armed = false;
+  if (digitalRead(RESET_BUTTON_PIN) == LOW) {
+    if (!down_ms)
+      down_ms = millis() | 1;
+    if (!armed && millis() - down_ms >= RESET_HOLD_MS) {
+      armed = true;
+      led_set(LED_BOOT);
+      Serial.println("[auth] BOOT held: let go to forget the password");
+    }
+    return;
+  }
+  down_ms = 0;
+  if (!armed)
+    return;
+  armed = false;
+  if (auth_from_secrets()) {
+    Serial.println("[auth] the password is compiled in (secrets.h) — kept");
+    led_restore();
+    return;
+  }
+  auth_forget();
+  Serial.println("[auth] password forgotten (BOOT button), restarting");
+  system_restart_in(200);
+}
+
 void setup() {
   Serial.begin(115200);
-  delay(3000); // wait for USB CDC to enumerate before printing
+  // Wait for a USB serial monitor, but not when none is connected
+  while (!Serial && millis() < 3000)
+    delay(10);
   Serial.setDebugOutput(true);
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
+  ota_health_init();
   settings_init();
   auth_init();
   led_start(APP_CORE, PRIO_LED); // fast blink until ready
@@ -61,20 +95,23 @@ void setup() {
   http_start();
 
   imu_start(APP_CORE, PRIO_IMU); // last, so bring-up runs uncontended
+  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   led_set(cam_ok ? LED_IDLE : LED_ERROR);
-  Serial.println("[ready]  ?=stats  T=forget-token");
+  ota_health_start();
+  Serial.println("[ready]  ?=stats  T=forget-token  BOOT 5 s=forget-token");
 }
 
 void loop() {
 #ifdef TEST_CRASH_AFTER_BOOT // scripts/test_ota_rollback.py: a deliberately bad
                              // image
-  if (millis() > OTA_CONFIRM_MS - 2000) {
+  if (ota_health_pending() && ota_health_confirm_s() <= 2) {
     Serial.println("[test] crashing on purpose");
     abort();
   }
 #endif
   focus_tick(); // autofocus mode changes are carried out here, see focus.h
   system_tick();
+  reset_button_tick();
   if (Serial.available()) {
     char c = Serial.read();
     if (c == '?')
@@ -89,8 +126,11 @@ void loop() {
   static uint32_t last_ms = 0;
   if (millis() - last_ms >= 250) { // housekeeping that isn't worth a task
     last_ms = millis();
-    wifi_tick();       // hotspot off while STA is up
-    ota_health_tick(); // confirm a new OTA image once it has proved itself
+    wifi_tick(); // joins; hotspot off while STA is up
+    // Confirm a new OTA image once it has proved itself: servers up, and a
+    // network to reach them on
+    ota_health_tick(http_running() && (WiFi.status() == WL_CONNECTED ||
+                                       (WiFi.getMode() & WIFI_AP)));
   }
   delay(10);
 }

@@ -400,9 +400,9 @@ dialog code{overflow-wrap:anywhere}
       <h1 id="passTitle">Welcome to your camera</h1>
       <p id="passText">First, choose a password. You'll need it whenever you change a setting, so pick one you'll remember.</p>
       <form id="passForm">
-        <label>Password<input type="password" id="pass1" minlength="8" maxlength="64" autocomplete="new-password" required></label>
-        <label id="pass2Row">Type it again<input type="password" id="pass2" minlength="8" maxlength="64" autocomplete="new-password"></label>
-        <p class="muted" style="margin:0;font-size:12.5px">At least 8 characters, no spaces.</p>
+        <label>Password<input type="password" id="pass1" minlength="8" maxlength="63" autocomplete="new-password" required></label>
+        <label id="pass2Row">Type it again<input type="password" id="pass2" minlength="8" maxlength="63" autocomplete="new-password"></label>
+        <p class="muted" style="margin:0;font-size:12.5px" id="passRules">8 to 63 characters, no spaces or accents.</p>
         <button class="btn primary" type="submit">Continue</button>
       </form>
     </div></div>
@@ -413,7 +413,7 @@ dialog code{overflow-wrap:anywhere}
       <div class="note" id="setupJoinNote" role="status" aria-live="polite" hidden style="margin:0 0 12px"></div>
       <ul class="list net" id="setupNets"></ul>
       <div class="empty" id="setupNetsEmpty"><svg class="i spin"><use href="#i-refresh"/></svg><b>Looking for networks…</b></div>
-      <p style="margin:14px 0 0;display:flex;gap:14px;flex-wrap:wrap"><button class="linkbtn" type="button" id="setupRescan">Search again</button><button class="linkbtn" type="button" id="setupSkip">Skip — keep using the camera's own WiFi</button></p>
+      <p style="margin:14px 0 0;display:flex;gap:14px;flex-wrap:wrap"><button class="linkbtn" type="button" id="setupRescan">Search again</button><button class="linkbtn" type="button" id="setupSkip">Skip for now</button></p>
     </div></div>
 
     <div class="card" id="stepDone" hidden><div class="card-b">
@@ -432,7 +432,7 @@ dialog code{overflow-wrap:anywhere}
   <div class="live" id="live">
     <div class="video" id="video">
       <img id="cam" alt="Live view from the camera">
-      <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b id="camEmptyT">Starting the video…</b><span id="camEmptyS"></span></div>
+      <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b id="camEmptyT">Starting the video…</b><span id="camEmptyS"></span><button class="btn sm" type="button" id="camEmptyBtn" hidden></button></div>
       <div class="vbar top">
         <span class="pill" id="resPill" title="Picture size">—</span>
         <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
@@ -606,6 +606,7 @@ dialog code{overflow-wrap:anywhere}
               <dt>Motion samples</dt><dd id="sImuN">—</dd>
               <dt>Built</dt><dd id="sBuild">—</dd>
               <dt>Settings layout</dt><dd id="sSchema">—</dd>
+              <dt>Stored passwords</dt><dd id="sSecrets">—</dd>
             </dl>
             <div style="margin-top:14px" class="tiles">
               <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
@@ -647,7 +648,7 @@ dialog code{overflow-wrap:anywhere}
         <div class="card-b">
           <div class="row"><span class="lbl">On this device<small id="tokState">—</small></span>
             <button class="btn sm" id="btnTokSet">Enter password</button><button class="btn sm ghost" id="btnTokForget">Forget</button></div>
-          <p class="hint"><svg class="i"><use href="#i-lock"/></svg><span>Needed to change settings. It's remembered only in this browser. Forgot it? Choose Reset → Password, then set a new one.</span></p>
+          <p class="hint"><svg class="i"><use href="#i-lock"/></svg><span>Needed to watch and to change settings. It's remembered only in this browser. Forgot it? While the camera is on, hold its <b>BOOT</b> button for 5 seconds, until the light blinks fast, then let go: it restarts without a password and you choose a new one.</span></p>
         </div>
       </div>
     </div>
@@ -658,7 +659,7 @@ dialog code{overflow-wrap:anywhere}
 <dialog id="tokDlg">
   <form method="dialog">
     <h3 id="tokTitle">Camera password</h3>
-    <p id="tokHelp">Enter the password you chose when you set up the camera.</p>
+    <p id="tokHelp">Enter the password you chose when you set up the camera. Forgot it? Hold the camera's BOOT button for 5 seconds, then let go.</p>
     <input type="password" id="tokInput" autocomplete="current-password" placeholder="Password" required>
     <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">OK</button></div>
   </form>
@@ -722,10 +723,15 @@ function ask(title, text, ok = 'OK', danger = false) {
 // The password is the firmware's API token: sent as X-Token, kept in this
 // browser only.
 const TOK_KEY = 'glTok';
+// What the camera accepts (token_rules.h): it travels in a header and doubles
+// as the hotspot's WiFi password
+const PASS_OK = /^[\x21-\x7e]{8,63}$/;
+const PASS_RULE = 'Use 8 to 63 characters: letters, numbers and symbols, without spaces or accents';
 const store = {
   get: () => local.get(TOK_KEY),
-  set(v) { local.set(TOK_KEY, v); renderTok(); },
-  clear() { local.set(TOK_KEY, ''); renderTok(); },
+  set(v) { local.set(TOK_KEY, v); renderTok(); videoReady = null; ensureVideo(); },
+  // The video cookie is HttpOnly: only the camera can drop it
+  clear() { local.set(TOK_KEY, ''); renderTok(); videoReady = false; fetch('/auth/forget').catch(() => {}); },
 };
 async function getJSON(path, ms = 4000) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
@@ -742,6 +748,7 @@ function askToken() {
     d.onclose = () => {
       const tok = inp.value.trim();
       if (d.returnValue !== 'ok' || !tok) return resolve(false);
+      if (!PASS_OK.test(tok)) { toast("That password isn't right", 'bad'); return resolve(false); }
       store.set(tok);
       resolve(true);
     };
@@ -780,7 +787,7 @@ function loop(name, fn, ms) {
 function startLive() {
   if (!liveShown()) return;
   loop('stream', checkStream, 2000);
-  if (imuOn()) loop('pose', pollPose, 100);
+  if (imuOn() && canWatch()) loop('pose', pollPose, 100);
 }
 
 // ── Pages ─────────────────────────────────────────────
@@ -817,7 +824,7 @@ $('#themeBtn').onclick = () => {
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', renderTheme);
 
 // ── Status, connection, restarts ──────────────────────
-let S = null, online = false, fails = 0, lastOk = 0, statusTimer = 0, firstStatus = true;
+let S = null, online = false, fails = 0, lastOk = 0, statusTimer = 0, firstStatus = true, polling = false;
 // R: a restart this page started (restart, reset, update) and is waiting
 // for the camera to come back from. notice: a result shown until dismissed.
 let R = null, notice = null;
@@ -829,10 +836,9 @@ const fmtUp = s => { const d = s / 86400 | 0, h = s / 3600 % 24 | 0, m = s / 60 
 const fmtBytes = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024 | 0) + ' KB';
 const host = () => (S?.hostname || 'wifi-camera') + '.local';
 // This page reached the camera through its own WiFi (not the home router)
-const viaHotspot = () => !!S && !!S.wifi.ap_ip && location.hostname === S.wifi.ap_ip;
+const viaHotspot = () => !!S && (S.hotspot ?? (!!S.wifi.ap_ip && location.hostname === S.wifi.ap_ip));
 const apOn = w => w.ap_on ?? w.ap_ip !== '0.0.0.0';
 const apName = () => S?.wifi.ap_ssid || 'Wifi-Camera';
-const OTA_CONFIRM_S = 20; // ota_health.h OTA_CONFIRM_MS
 
 function setOnline(on) {
   online = on;
@@ -840,8 +846,11 @@ function setOnline(on) {
   $('#connDot').className = 'dot ' + (on ? 'ok' : R ? 'warn' : 'bad');
   $('#connText').textContent = on ? 'Connected' : R ? 'Restarting' : 'Offline';
 }
+// One poll at a time: a call while one is out only moves the next one up
 async function pollStatus() {
   clearTimeout(statusTimer);
+  if (polling) return;
+  polling = true;
   try {
     const s = await getJSON('/status', R ? 2500 : 4000);
     const back = !online && lastOk;
@@ -849,7 +858,7 @@ async function pollStatus() {
     setOnline(true);
     if (R) trackRestart(s);
     renderStatus();
-    if (back) setStream(liveShown()); // the old video connection died with the camera
+    if (back) { videoReady = null; ensureVideo(); } // the old video connection died with the camera
     if (firstStatus) {
       firstStatus = false;
       // A new camera, or one not on a home network yet: guide the person
@@ -859,22 +868,23 @@ async function pollStatus() {
   } catch (_) {
     if (++fails >= 2 || R) setOnline(false);
   }
+  polling = false;
   renderBanner();
+  clearTimeout(statusTimer);
   statusTimer = setTimeout(pollStatus, R || joining ? 1000 : document.hidden ? 10000 : 2000);
 }
 function watchRestart(kind) {
-  R = {kind, t0: Date.now(), version: S?.version, build: S?.build, rebooted: false, pending: false, last: null, again: false};
+  R = {kind, t0: Date.now(), version: S?.version, build: S?.build, rebooted: false, pending: false};
   notice = null;
-  setTimeout(pollStatus, 1200); // it restarts ~0.5 s after replying
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(pollStatus, 1200); // it restarts ~0.5 s after replying
   renderBanner();
 }
 function trackRestart(s) {
   // Uptime starting over is how a restart shows (the camera may answer once more first)
   if (!R.rebooted && s.uptime > (Date.now() - R.t0) / 1000 + 2) return;
   R.rebooted = true;
-  if (R.last !== null && s.uptime + 2 < R.last) R.again = true; // restarted while on trial = went back
-  R.last = s.uptime;
-  if (s.ota_pending) { R.pending = true; return; }
+  if (s.ota_pending) { R.pending = true; return; } // a new image on probation
   const r = R;
   R = null;
   if (r.kind !== 'ota') {
@@ -884,9 +894,10 @@ function trackRestart(s) {
     return;
   }
   const changed = s.version !== r.version || s.build !== r.build;
-  notice = changed && !r.again
+  // rolled_back: the bootloader went back after the new one failed to start
+  notice = changed && !s.rolled_back
     ? {kind: 'ok', icon: 'check', title: 'Update installed', text: `The camera now runs version ${s.version}. Reload this page to finish.`, btn: 'Reload', action: () => location.reload(), close: true}
-    : r.again || r.pending
+    : s.rolled_back
     ? {kind: 'bad', icon: 'alert', title: "The update didn't work", text: `The camera went back to version ${s.version} and works as before. Try downloading the update again.`, close: true}
     : {kind: 'warn', icon: 'info', title: `Still on version ${s.version}`, text: 'That file may have been the version the camera already had.', close: true};
   $('#otaText').textContent = notice.title;
@@ -897,7 +908,7 @@ function renderBanner() {
   const hot = viaHotspot();
   if (R) {
     const t = (Date.now() - R.t0) / 1000;
-    const left = Math.max(0, OTA_CONFIRM_S - (S?.uptime ?? 0));
+    const left = S?.ota_confirm_s ?? 0;
     if (R.pending && online)
       b = {kind: 'warn', icon: 'refresh', spin: true, title: 'Finishing the update…', text: `About ${left} seconds left. Keep the camera plugged in.`};
     else if (t > (R.kind === 'ota' ? 90 : 60))
@@ -908,13 +919,13 @@ function renderBanner() {
   } else if (!online && fails >= 2) {
     const since = lastOk ? `Showing what it last sent, at ${new Date(lastOk).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}. ` : '';
     b = {kind: 'bad', icon: 'alert', title: "Can't reach the camera",
-      text: since + (joining && !hot ? `It's moving to ${joining.ssid} — connect this device to ${joining.ssid} and open http://${host()}.`
+      text: since + (joining && !hot ? `It's moving to ${joining.ssid}. If it gets there, connect this device to ${joining.ssid} and open http://${host()}. If it can't, it comes back to this network within a minute.`
         : hot ? `Check it has power, and that this device is still connected to ${apName()}. Trying again…`
         : 'Check it has power and that this device is on the same WiFi. Trying again…')};
   } else if (notice) {
     b = notice;
   } else if (S?.ota_pending) {
-    b = {kind: 'warn', icon: 'refresh', spin: true, title: 'Finishing an update…', text: `About ${Math.max(0, OTA_CONFIRM_S - S.uptime)} seconds left. Keep the camera plugged in.`};
+    b = {kind: 'warn', icon: 'refresh', spin: true, title: 'Finishing an update…', text: `About ${S.ota_confirm_s} seconds left. Keep the camera plugged in.`};
   } else if (S && S.auth === false && page !== 'setup') {
     b = {kind: 'info', icon: 'key', title: 'Finish setting up your camera', text: 'Choose a password so only you can change its settings.', btn: 'Set up', action: () => { location.hash = '#setup'; }};
   }
@@ -955,7 +966,9 @@ function renderStatus() {
   $('#nApSsid').textContent = w.ap_ssid;
   $('#nApState').textContent = !ap ? 'Off' : w.ap_clients ? `On · ${w.ap_clients} device${w.ap_clients > 1 ? 's' : ''}` : 'On';
   $('#nApIp').textContent = ap ? w.ap_ip : '';
-  $('#nApNote').textContent = hot ? "You're connected through it" : ap ? 'For setup, or when your home WiFi is down' : 'Turns back on by itself if your home WiFi goes down';
+  const apPass = {camera: "WiFi password: the camera's password", custom: 'WiFi password: set when the software was built'}[w.ap_key]
+    || (S.auth ? "WiFi password: wificamera — the camera's password from its next restart" : 'WiFi password: wificamera');
+  $('#nApNote').textContent = (hot ? "You're connected through it. It's for setting up the camera — no video." : ap ? 'For setting up the camera (no video), or when your home WiFi is down.' : 'Turns back on by itself if your home WiFi goes down.') + ' ' + apPass;
   $('#joinHint').textContent = !hot && w.sta_ssid
     ? `You're watching through ${w.sta_ssid}. If you move the camera to another network, open it there at http://${host()}.`
     : 'The camera remembers the network. Devices on its own WiFi may disconnect for a moment while it connects.';
@@ -973,18 +986,23 @@ function renderStatus() {
   $('#sImuN').textContent = imu.state === 'none' ? '—' : `${imu.samples} · ${imu.errors} errors`;
   $('#sBuild').textContent = S.build;
   $('#sSchema').textContent = S.schema;
+  $('#sSecrets').textContent = {chip: 'Encrypted, with a key kept inside the chip', firmware: 'Only scrambled — the chip had no room for a key'}[S.secrets] || '—';
   $('#sHeap').textContent = fmtBytes(S.heap);
   $('#sHeapBar').style.width = Math.min(100, S.heap / 327680 * 100) + '%';
   $('#sPsram').textContent = fmtBytes(S.psram);
   $('#sPsramBar').style.width = (S.psram / S.psram_total * 100) + '%';
   // Live page
   const af = S.af !== 'none';
-  $('#btnFocus').hidden = !af;
-  $('#focusPill').hidden = !af;
+  // Nothing to frame without the video
+  $('#btnFocus').hidden = !af || !canWatch();
+  $('#btnShot').hidden = $('#btnFull').hidden = $('#resPill').hidden = !canWatch();
+  $('#focusPill').hidden = !af || !canWatch();
   $('#focusPillText').textContent = afNames[S.af] || S.af;
-  $('#motion').hidden = !imuOn();
-  $('#live').classList.toggle('side', imuOn());
-  if (!imuOn()) $('#headPill').hidden = true;
+  const motion = imuOn() && canWatch();
+  $('#motion').hidden = !motion;
+  $('#live').classList.toggle('side', motion);
+  if (!motion) $('#headPill').hidden = true;
+  if (videoReady === null && !hot) ensureVideo();
   startLive();
   if (!streamPort) { streamPort = S.stream_port; setStream(liveShown()); }
 }
@@ -993,8 +1011,28 @@ function renderStatus() {
 const cam = $('#cam');
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 let streamPort = 0, streamOn = false, streamT0 = 0, streamBusy = false;
+// The video and motion readings are private and not sent over the camera's
+// own WiFi (that is for setup). videoReady: this browser has the video
+// cookie (GET /auth sets it) — null = not checked yet.
+let videoReady = null, videoChecking = false;
+const canWatch = () => videoReady === true && !viaHotspot();
+async function ensureVideo() {
+  if (videoChecking || !S || viaHotspot()) return;
+  if (S.auth === false) { videoReady = null; return; } // setup first
+  if (!store.get()) { videoReady = false; setStream(liveShown()); return; }
+  videoChecking = true;
+  try {
+    const r = await fetch('/auth', {headers: {'X-Token': store.get()}, cache: 'no-store'});
+    if (r.status === 401) { local.set(TOK_KEY, ''); renderTok(); }
+    videoReady = r.ok;
+  } catch (_) { videoReady = null; } // offline: the next status poll asks again
+  videoChecking = false;
+  if (videoReady === null) return;
+  setStream(liveShown());
+  renderStatus();
+}
 function setStream(on) {
-  streamOn = on && !!streamPort;
+  streamOn = on && !!streamPort && canWatch();
   streamT0 = performance.now();
   streamBusy = false;
   cam.src = streamOn ? `${location.protocol}//${location.hostname}:${streamPort}/stream?t=${Date.now()}` : BLANK;
@@ -1009,12 +1047,15 @@ async function checkStream() {
   try {
     const c = await getJSON('/camera/status', 3000);
     streamBusy = c.viewers > 0;
-    if (!streamBusy && waited > 8000) setStream(true);
+    // Nobody else has it: the password may have changed elsewhere
+    if (!streamBusy && waited > 8000) { videoReady = null; ensureVideo(); }
   } catch (_) {}
 }
 $('#btnShot').onclick = async () => {
   try {
-    const r = await fetch('/snapshot'); if (!r.ok) throw 0;
+    const r = await fetch('/snapshot');
+    if (r.status === 401) { videoReady = null; ensureVideo(); }
+    if (!r.ok) throw 0;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(await r.blob());
     a.download = 'wifi-camera-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg';
@@ -1027,16 +1068,27 @@ $('#btnFocus').onclick = () => setCam('af', 1, 'Focusing…');
 
 let emptyKey = '';
 function renderCamEmpty() {
-  const show = streamOn && !gotFrame();
+  const show = !streamOn || !gotFrame();
   $('#camEmpty').hidden = !show;
   if (!show) return;
-  const [t, s] = !online ? ['The camera is offline', 'The video comes back by itself when it does.']
+  const w = S?.wifi;
+  const [t, s, btn, act] = !online ? ['The camera is offline', 'The video comes back by itself when it does.']
+    : !S ? ['Starting the video…', '']
+    : viaHotspot() ? ['The video is on your home WiFi', `The camera's own WiFi, ${apName()}, is only for setting it up. ` + (w.sta_ssid
+        ? `To watch, connect this device to ${w.sta_ssid} and open http://${host()}.`
+        : 'Connect the camera to your home WiFi first.'), w.sta_ssid ? '' : 'Connect to WiFi', () => { location.hash = '#network'; }]
+    : S.auth === false ? ['Finish setting up first', 'Choose a password for the camera, then the video starts.', 'Set up', () => { location.hash = '#setup'; }]
+    : videoReady === false ? ['Enter the password to watch', "The video is private: it's only shown with the camera's password.", 'Enter password', async () => { if (await askToken()) ensureVideo(); }]
+    : videoReady === null ? ['Starting the video…', '']
     : streamBusy ? ['Someone else is watching', 'The camera shows its video on one screen at a time. It appears here as soon as they close it.']
     : ['Starting the video…', ''];
-  if (emptyKey === t) return;
-  emptyKey = t;
+  if (emptyKey === t + s) return;
+  emptyKey = t + s;
   $('#camEmptyT').textContent = t;
   $('#camEmptyS').textContent = s;
+  $('#camEmptyBtn').hidden = !btn;
+  $('#camEmptyBtn').textContent = btn || '';
+  $('#camEmptyBtn').onclick = act || null;
 }
 
 // ── Live: the motion sensor ───────────────────────────
@@ -1244,10 +1296,10 @@ function trackJoin() {
     n.className = 'note ok';
     n.innerHTML = `<b>Connected to ${esc(w.sta_ssid)}.</b> On that network, open <a href="http://${esc(host())}/">${esc(host())}</a> or <a href="http://${esc(w.sta_ip)}/">${esc(w.sta_ip)}</a>.`;
     j.done?.();
-  } else if (t > 35) {
+  } else if ((t > 5 && !w.joining) || t > 45) {
     joining = null;
     n.className = 'note bad';
-    n.innerHTML = `<b>Couldn't connect to ${esc(j.ssid)}.</b> Check the WiFi password and try again. The camera's own WiFi stays on meanwhile.`;
+    n.innerHTML = `<b>Couldn't connect to ${esc(j.ssid)}.</b> Check the WiFi password and try again.` + (w.saved ? ` The camera went back to ${esc(w.saved)}.` : " The camera's own WiFi stays on meanwhile.");
   } else {
     n.className = 'note';
     n.innerHTML = `Connecting to <b>${esc(j.ssid)}</b>… this can take half a minute.` + (viaHotspot() ? ` If this device drops off ${esc(apName())} for a moment, that's normal — it reconnects.` : '');
@@ -1281,7 +1333,7 @@ async function setupEnter() {
   if (claiming || !store.get()) {
     $('#passTitle').textContent = claiming ? 'Welcome to your camera' : 'Enter your camera\'s password';
     $('#passText').textContent = claiming
-      ? "First, choose a password. You'll need it whenever you change a setting, so pick one you'll remember."
+      ? "First, choose a password. You'll need it to watch and to change settings, so pick one you'll remember. It also becomes the password of the camera's own WiFi."
       : 'The one you chose when you first set up the camera.';
     $('#pass2Row').hidden = !claiming;
     $('#pass1').autocomplete = claiming ? 'new-password' : 'current-password';
@@ -1296,7 +1348,7 @@ $('#passForm').onsubmit = async e => {
   e.preventDefault();
   const p1 = $('#pass1').value, claiming = S?.auth === false;
   if (claiming) {
-    if (p1.length < 8 || /\s/.test(p1)) return toast('Use at least 8 characters, without spaces', 'bad');
+    if (!PASS_OK.test(p1)) return toast(PASS_RULE, 'bad');
     if (p1 !== $('#pass2').value) return toast("The two passwords don't match", 'bad');
     try {
       const r = await fetch('/auth/claim', {method: 'POST', headers: {'X-Claim': '1'}, body: p1});
@@ -1305,6 +1357,7 @@ $('#passForm').onsubmit = async e => {
     store.set(p1);
     toast('Password saved');
   } else {
+    if (!PASS_OK.test(p1)) return toast("That password isn't right", 'bad');
     let r;
     try { r = await fetch('/auth', {headers: {'X-Token': p1}}); } catch (_) { return toast("Can't reach the camera", 'bad'); }
     if (r.status === 401) return toast("That password isn't right", 'bad');
@@ -1336,14 +1389,14 @@ function setupDone(ssid) {
     $('#doneTitle').textContent = `Your camera is on ${ssid}`;
     $('#doneText').textContent = `To watch it from now on, connect your phone or computer to ${ssid} and open:`;
     $('#doneAddrs').innerHTML = addrHTML(`http://${host()}/`) + addrHTML(`http://${S.wifi.sta_ip}/`, "If the first one doesn't open (some Android phones), use this one.");
-    $('#doneTip').textContent = `Bookmark it or add it to your home screen. The camera's own WiFi, ${apName()}, turns off by itself once nobody uses it, and comes back if your home WiFi is ever down.`;
-    $('#setupFinish').textContent = viaHotspot() ? 'Watch now (on the camera\'s WiFi)' : 'Open the camera';
+    $('#doneTip').textContent = `Bookmark it or add it to your home screen. The camera's own WiFi, ${apName()}, is only for setting it up (no video): it turns off by itself once nobody uses it, and comes back if your home WiFi is ever down.` + (S.wifi.ap_key !== 'custom' ? ' From its next start, its WiFi password is your camera password.' : '');
+    $('#setupFinish').textContent = viaHotspot() ? 'Done' : 'Open the camera';
   } else {
-    $('#doneTitle').textContent = 'Ready to use';
-    $('#doneText').textContent = `Watch the camera whenever this device is connected to ${apName()}, at:`;
+    $('#doneTitle').textContent = 'Set up for now';
+    $('#doneText').textContent = `The video is shown on your home WiFi, so connect the camera to it under WiFi when you're ready. Until then you can change its settings here, while this device is connected to ${apName()}:`;
     $('#doneAddrs').innerHTML = addrHTML(`http://${S?.wifi.ap_ip || '192.168.4.1'}/`);
-    $('#doneTip').textContent = 'You can connect it to your home WiFi any time under WiFi.';
-    $('#setupFinish').textContent = 'Open the camera';
+    $('#doneTip').textContent = S?.wifi.ap_key !== 'custom' ? "From the camera's next start, its own WiFi uses your camera password." : '';
+    $('#setupFinish').textContent = 'Done';
   }
 }
 $('#setupFinish').onclick = () => { location.hash = '#live'; };
@@ -1366,10 +1419,10 @@ function resetText(scope) {
   const w = S?.wifi || {}, ap = apName();
   return {
     camera: ['Reset the picture settings?', 'Size, quality, focus, light and color go back to how they came.'],
-    wifi: ['Forget the home WiFi?', `The camera disconnects from ${w.saved || 'your WiFi'} and only offers its own WiFi, ${ap}, until you connect it again.` + (!viaHotspot() && w.sta_ssid ? ` You'll lose this page: join ${ap} to reach the camera.` : '')],
+    wifi: ['Forget the home WiFi?', `The camera disconnects from ${w.saved || 'your WiFi'} and only offers its own WiFi, ${ap}, until you connect it again — no video until then.` + (!viaHotspot() && w.sta_ssid ? ` You'll lose this page: join ${ap} to reach the camera.` : '')],
     imu: ['Reset the compass calibration?', 'The direction will drift until you calibrate the compass again.'],
-    token: ['Reset the password?', "Anyone who opens the camera's page can then choose a new one, so set it right away."],
-    all: ['Factory reset?', `Everything goes back to how it came: picture settings, WiFi, compass and password. Afterwards, join ${ap} to set the camera up again.`],
+    token: ['Reset the password?', `Anyone who opens the camera's page can then choose a new one, so set it right away. Its own WiFi, ${ap}, goes back to the password wificamera.`],
+    all: ['Factory reset?', `Everything goes back to how it came: picture settings, WiFi, compass and password. Afterwards, join ${ap} (password wificamera) to set the camera up again.`],
   }[scope];
 }
 async function resetScope(scope) {
@@ -1411,6 +1464,7 @@ otaFile.onchange = () => { upload(otaFile.files[0]); otaFile.value = ''; };
 async function upload(file) {
   if (!file) return;
   if (uploading || R) { toast('Wait for the camera to finish what it\'s doing', 'bad'); return; }
+  if (S?.ota_pending) { toast(`The camera is still finishing the last update. Try again in ${S.ota_confirm_s || 'a few'} seconds.`, 'bad'); return; }
   const bad = await checkImage(file);
   if (bad) { toast(bad, 'bad'); return; }
   // Check the password first: a camera that refuses an upload just drops the

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 static volatile LedMode _mode = LED_BOOT;
+static volatile LedMode _rest = LED_BOOT; // the last mode that isn't LED_OTA
 
 // Alternating on/off durations in ms, starting with "on"; 0 terminates.
 // Indexed by LedMode — keep in enum order.
@@ -40,4 +41,10 @@ void led_start(BaseType_t core, UBaseType_t prio) {
   xTaskCreatePinnedToCore(led_task, "led", 2048, nullptr, prio, nullptr, core);
 }
 
-void led_set(LedMode mode) { _mode = mode; }
+void led_set(LedMode mode) {
+  if (mode != LED_OTA)
+    _rest = mode;
+  _mode = mode;
+}
+
+void led_restore() { _mode = _rest; }

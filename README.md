@@ -12,7 +12,7 @@ AprilTag detection was removed on 2026-10-26 (the last version with it is on the
    ```bash
    cp src/secrets.example.h src/secrets.h
    ```
-   Fill in `WIFI_SSID`, `WIFI_PASS` and an `API_TOKEN` (`openssl rand -hex 12`). Without `secrets.h` the firmware still builds (this is what CI and the release binaries are): hotspot only, and the board has **no token** until you claim one — see below.
+   Everything in it is optional and commented out: uncomment `WIFI_SSID`/`WIFI_PASS` and an `API_TOKEN` (8–63 printable characters, checked at compile time; `openssl rand -hex 12`) if you want them built in. Without them (this is what CI and the release binaries are) the camera starts with its hotspot only, and **no token** until you claim one — see below.
 
 2. Flash and monitor:
    ```bash
@@ -20,7 +20,11 @@ AprilTag detection was removed on 2026-10-26 (the last version with it is on the
    ```
    After that, update over WiFi from the dashboard's **System** page (or `curl`, below).
 
-3. Join the camera's WiFi, **Wifi-Camera** (password `wificamera`, override with `AP_PASS` in `secrets.h`). Phones and laptops open the setup page by themselves ("Sign in to network" — a captive portal); otherwise open `http://192.168.4.1`. Setup walks through three steps: choose a password (on a release binary, or without `secrets.h`; it's stored on the camera and the first visitor wins, so do it right after flashing), connect to your home WiFi, then where to find the camera from now on (`http://wifi-camera.local`, or its IP). The password is the API token: `API_TOKEN` from `secrets.h` sets it at build time instead. The token and network from `secrets.h` are also saved in flash on boot, so updating later with a release binary keeps both. Forget the password with Settings → Reset → Password, `POST /settings/reset?scope=token`, or `T` on the serial monitor.
+3. Join the camera's WiFi, **Wifi-Camera** (password `wificamera` until a camera password is set — see below). Phones and laptops open the setup page by themselves ("Sign in to network" — a captive portal); otherwise open `http://192.168.4.1`. Setup walks through three steps: choose a password (on a release binary, or without `secrets.h`; it's stored on the camera and the first visitor wins, so do it right after flashing), connect to your home WiFi, then where to find the camera from now on (`http://wifi-camera.local`, or its IP). The password is the API token: `API_TOKEN` from `secrets.h` sets it at build time instead. The token and network from `secrets.h` are also saved in flash on boot, so updating later with a release binary keeps both.
+
+   **The hotspot is for setup only**: settings work over it, but the video, snapshots and motion readings are only served on the home network, and only with the password. Once a password is set, the hotspot's own WiFi password becomes the camera password from its next start (unless `AP_PASS` in `secrets.h` fixes it).
+
+   **Forgot the password?** While the camera is running, hold its **BOOT** button for 5 seconds until the LED blinks fast, then let go: it restarts without a password (and the hotspot goes back to `wificamera`), and the next visitor chooses a new one. Also: Settings → Reset → Password (needs the current one), `POST /settings/reset?scope=token`, or `T` on the serial monitor. A password compiled in from `secrets.h` can't be forgotten this way.
 
 ## Dashboard
 
@@ -39,7 +43,7 @@ The page lives in `web/index.html`; `scripts/embed_web.py` gzips it into the fir
 What it does for you:
 - **The stream is let go when the page isn't watching it** — another page, or the tab hidden — so a forgotten tab doesn't hold the one stream slot. A second viewer is told someone else is watching instead of waiting on a blank frame.
 - **A lost connection says so**: a banner with the time of the last values, which stay on screen faded. On the hotspot it reminds you to rejoin it.
-- **Firmware updates are followed to the end**: the file is checked first (an ESP32-S3 app image, not the `-factory` one), then upload → install → the 20 s probation (*don't unplug*) → *Updated* (with a reload button for the new dashboard), or *failed to start, back on the previous version*. Reboots and settings resets reconnect by themselves the same way.
+- **Firmware updates are followed to the end**: the file is checked first (an ESP32-S3 app image, not the `-factory` one), then upload → install → the 20 s probation (*don't unplug*) → *Updated* (with a reload button for the new dashboard), *failed to start, back on the previous version* (from `/status.rolled_back`), or *still on version X* (the same file again). Reboots and settings resets reconnect by themselves the same way.
 - **Setup over the camera's own WiFi**: the captive portal opens the setup page; after joining a home network it gives the new address (`wifi-camera.local`, and the IP for phones that can't resolve `.local`).
 
 ## Status LED (GPIO 21)
@@ -57,9 +61,11 @@ What it does for you:
 The board runs **AP+STA simultaneously**:
 - Hotspot at `http://192.168.4.1` — on at boot; once STA has been up 30 s with no device on the hotspot it turns off, and it comes back when STA has been down 15 s (`/status.wifi.ap_on`)
 - STA tries the network last chosen in the dashboard, then the one in `secrets.h` (10 s each), then stays hotspot-only
-- Switching STA networks can move the hotspot to another channel, briefly dropping its clients
+- Joining a network from the dashboard only replaces the saved one once it worked: a wrong password or a network out of reach sends the camera back to the network it had after 30 s (`/status.wifi.joining` while it tries)
+- Switching STA networks can move the hotspot to another channel, briefly dropping its clients. While a device is on the hotspot and the home network is gone, STA retries once a minute instead of continuously, since each attempt scans every channel and knocks hotspot clients off
 - On the router's network the board also answers to **`http://wifi-camera.local`** (mDNS, `HOSTNAME` in `config.h`) — no need to look up its IP
 - **Captive portal** while the hotspot is on: a DNS server answers every name with the camera's address, and requests for other hosts (the phones' connectivity checks) are redirected to the dashboard, so joining the hotspot opens the setup page. The DNS server only exists while the hotspot is on
+- **Host check**: every route answers only when the `Host` header is the camera (one of its addresses, `wifi-camera.local`, or none); anything else gets the same redirect. That covers the captive portal and shuts out DNS rebinding (a web page whose own name is pointed at the camera)
 
 ## HTTP endpoints
 
@@ -68,25 +74,28 @@ Control server, port **80**:
 | Path | Description |
 |------|-------------|
 | `GET /` | Dashboard |
-| `POST /auth/claim` | While the board has no token (release builds), sets it: body = the token (8–64 printable characters), header `X-Claim: 1`; 400 once one is set |
-| `GET /auth` 🔒 | `OK` if the token is right — the dashboard calls it before an upload |
-| `GET /status` | Firmware version, uptime, `ota_pending`, sensor, AF state, temperature, memory, `imu` (`state`, `samples`, `errors`, `mag`), WiFi (incl. `ap_on`) |
-| `GET /pose` | `{"q":[w,x,y,z],"imu":"none\|calibrating\|ok","n","err","mag":"none\|uncalibrated\|calibrating\|ok","heading":"mag\|gyro","cal","field_ut"}` — sensor → East-North-Up; `heading` = where yaw comes from; `cal` = compass calibration progress 0–1 |
+| `POST /auth/claim` | While the board has no token (release builds), sets it: body = the token (8–63 printable characters, no spaces), header `X-Claim: 1`; 400 once one is set. Also sets the video cookie |
+| `GET /auth` 🔒 | `OK` if the token is right, and sets the **video cookie** (`wc_video`, HttpOnly, a hash of the token) that `/stream`, `/snapshot` and `/pose` accept in place of `X-Token` — an `<img>` can't send headers |
+| `GET /auth/forget` | Drops the video cookie (the dashboard's *Forget*) |
+| `GET /status` | Firmware version, `build` (build time — differs between any two builds), uptime, `ota_pending` + `ota_confirm_s`, `rolled_back` (the last update failed to start), `hotspot` (this request came over it), `secrets` (`chip`/`firmware`, see below), sensor, AF state, temperature, memory, `imu` (`state`, `samples`, `errors`, `mag`), WiFi (incl. `ap_on`, `ap_key` = `default`/`camera`/`custom`, `joining`) |
+| `GET /pose` 🎥 | `{"q":[w,x,y,z],"imu":"none\|calibrating\|ok","n","err","mag":"none\|uncalibrated\|calibrating\|ok","heading":"mag\|gyro","cal","field_ut"}` — sensor → East-North-Up; `heading` = where yaw comes from; `cal` = compass calibration progress 0–1 |
 | `GET /camera/status` | Current camera settings + `af`, `af_state`, `viewers` (open stream connections) |
-| `GET /snapshot` | One JPEG frame at the stream's size |
+| `GET /snapshot` 🎥 | One JPEG frame at the stream's size |
 | `GET /wifi/scan[?refresh=1]` | Nearby networks. Never blocks: answers `{"scanning":true}` while a scan runs — ask again until it doesn't (`refresh=1` starts a new one) |
 | `GET /stream` | 302 redirect to `:81/stream` |
 | `POST /camera/set?var=&val=` 🔒 | `framesize`, `quality` (4–63), `brightness`/`contrast`/`saturation`/`sharpness`/`ae_level` (−2…2), `awb`, `aec`, `agc`, `hmirror`, `vflip` (0/1), `wb_mode` (0–4), `af` (0 infinity, 1 focus once, 2 continuous) |
-| `POST /wifi/connect` 🔒 | `{"ssid","pass"}` — joins and remembers the network |
-| `POST /ota` 🔒 | Raw `firmware.bin`; reboots on success |
+| `POST /wifi/connect` 🔒 | `{"ssid","pass"}` — joins the network, and remembers it once it worked |
+| `POST /ota` 🔒 | Raw `firmware.bin`; reboots on success. Refused while the last update is still on probation (`ota_pending`) |
 | `POST /camera/reset` 🔒 | Forget saved camera settings and reboot |
 | `POST /imu/compass?do=` 🔒 | `start` a compass calibration, `finish` it (400 until enough rotation was seen), `cancel`, or `clear` the stored one |
 | `POST /settings/reset?scope=` 🔒 | `all`, `camera`, `wifi`, `imu` (compass calibration) or `token`: forget those saved settings and reboot |
 | `POST /system/reboot` 🔒 | Reboot |
 
-Stream server, port **81**: `GET /stream` — MJPEG, one viewer at a time (the next one waits until it's free).
+Stream server, port **81**: `GET /stream` 🎥 — MJPEG, one viewer at a time (the next one waits until it's free).
 
 Any other path: 404 when addressed to the camera, a redirect to the dashboard otherwise (captive portal).
+
+🎥 Home network only (403 over the hotspot), and the password: `X-Token` or the video cookie (401 otherwise).
 
 🔒 Requires header `X-Token: <API_TOKEN>`, e.g.
 ```bash
@@ -109,9 +118,11 @@ Core 0 is reserved for radio and network I/O. The camera needs no core of its ow
 
 ## Saved settings and firmware updates
 
-Everything the board remembers (camera settings, WiFi network, compass calibration, API token) lives in flash under one versioned layout (`src/settings.h`); `POST /settings/reset` clears any part of it. Schema 2 dropped the AprilTag detector's settings: a board updated from an older firmware clears them on first boot.
+Everything the board remembers (camera settings, WiFi network, compass calibration, API token) lives in flash under one versioned layout (`src/settings.h`); `POST /settings/reset` clears any part of it. Schema 2 dropped the AprilTag detector's settings; schema 3 encrypts the passwords (below). A board updated from an older firmware migrates on first boot.
 
-A firmware update over WiFi boots **on probation**: if the new image resets before it has been up 20 s with the HTTP servers running (a crash in `setup()`, a boot loop), the bootloader goes back to the previous image on its own. A power cycle inside those 20 s counts as a failure too, so let a fresh update run for half a minute. `/status` shows `ota_pending` while it is still on probation.
+**Passwords are encrypted at rest** (`src/secret_store.cpp`): the API token and the home WiFi password are AES-256-GCM blobs in NVS. The key comes from the chip's HMAC peripheral: on first boot the firmware burns a random 256-bit key into a free **eFuse key block** (purpose `HMAC_UP`, read-protected — software can use it but never read it back). This is **permanent** and uses one of the chip's six key blocks; a dump of the flash alone no longer reveals the passwords. If no block is free, the key is derived from the MAC address instead, which only obscures them (`/status.secrets` = `firmware`, Settings → Advanced details). IDF's built-in NVS encryption isn't used: Arduino mounts NVS unencrypted before `setup()`, and a new partition table can't be installed over the air. On the first boot of schema 3 the plain-text passwords are encrypted and the NVS partition is rewritten (erase + copy back), because NVS leaves deleted values in flash; the WiFi driver's own store (`nvs.net80211`) is dropped too. A power cut during that one-time step loses the saved settings. Passwords compiled in from `secrets.h` are still in the firmware image itself.
+
+A firmware update over WiFi boots **on probation**: it is confirmed 20 s after `setup()` finished, once the HTTP servers run and the camera is on a network (home WiFi or its hotspot). If it resets before that (a crash, a boot loop), the bootloader goes back to the previous image on its own; if it never gets healthy, it rolls itself back after 2 minutes. A power cycle during probation counts as a failure too, so let a fresh update run for half a minute. `/status` shows `ota_pending` (and `ota_confirm_s`) while on probation, and `rolled_back` after a failed one.
 
 ## Motion sensor (optional)
 
@@ -133,6 +144,8 @@ src/
   secrets.example.h   Template for the git-ignored secrets.h
   auth.h/cpp          The API token: compiled in, or claimed at runtime and kept in flash
   token_rules.h       What a valid token looks like (host-tested)
+  secret_store.h/cpp  Passwords encrypted at rest (eFuse HMAC key, AES-GCM)
+  build_info.h/cpp    Version + build time, the one file rebuilt every build
   imu.h/cpp           LSM6DSOX + LIS3MDL driver, VQF sampling task, compass calibration
   mag_cal.h           Compass calibration maths (host-tested)
   strbuf.h            appendf / json_esc
@@ -166,10 +179,10 @@ lib/
 | `task format` | clang-format everything | — |
 | `task format-check` | Fail on unformatted sources | Format |
 | `task check` | cppcheck; fails on high/medium findings | Static analysis |
-| `task test` | Unit tests on your computer (token rules, VQF with magnetometer, compass calibration) — no board | Unit tests |
+| `task test` | Unit tests on your computer (token rules, JSON helpers, VQF with magnetometer, compass calibration) — no board | Unit tests |
 | `task build` | Compile the firmware | Build firmware |
 | `task ci` | All four, in that order | — |
-| `task smoke` | Check the running board over the network: routes, token, POST-only, no CORS, snapshot (`-- -H <ip> --token <t>` for options) | — |
+| `task smoke` | Check the running board over the network: routes, token, POST-only, no CORS, Host check, video access rules, snapshot (`-- -H <ip> --token <t>` for options) | — |
 | `task ota-rollback-test` | OTA a deliberately crashing image and check the board rolls back to the old one | — |
 
 `.github/workflows/ci.yml` runs Format, Static analysis, Unit tests and Build in parallel on every push and pull request, each by calling the same `task` command. Build uploads `firmware.bin` and `firmware.factory.bin` as a workflow artifact and writes the RAM/flash usage to the run summary.
@@ -200,7 +213,8 @@ Tags with a hyphen (`v1.1.0-rc1`) become pre-releases. The firmware reports its 
 - **Green/black dotted columns in the video** — an OV5640 JPEG artifact (fixed columns, one dot every 8 rows). Not caused by load; worse at a lower camera clock (10/16 MHz than 20 MHz); higher JPEG quality numbers reduce it (≈50 % fewer at 20). Root cause not found yet
 - **Black screen / camera init error** — power-cycle after flashing; AXP313A needs a hard reset on first boot. The LED double-blinks; dashboard, IMU and OTA keep working
 - **Compass direction is wrong or wanders** — calibrate it again (Live → Motion sensor), away from metal and magnets; it's only used once calibrated
-- **Dashboard says "Wrong token"** — the stored token was cleared; enter the token again (System → Access) — `API_TOKEN` from `secrets.h`, or the one you chose on a release build
-- **Stuck on a wrong dashboard-chosen network** — it falls back to `secrets.h` after 10 s; `task factory` erases all saved settings
+- **Dashboard asks for the password** — enter it again (Settings → Password) — `API_TOKEN` from `secrets.h`, or the one you chose. Forgotten: hold BOOT 5 s (see setup)
+- **No video on the camera's own WiFi** — by design: the hotspot is for setup. Watch on the home network
+- **Joined a wrong network** — the camera goes back to the one it had after 30 s; `task factory` erases all saved settings
 - **PSRAM error** — `board_build.arduino.memory_type = qio_opi` must not be changed; N16R8 uses OPI PSRAM
 - **No COM port** — hold BOOT, tap RST, release BOOT, then flash

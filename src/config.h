@@ -16,11 +16,11 @@
 #define API_TOKEN "" // empty → state-changing endpoints are disabled
 #endif
 
-// ── WiFi – Access Point (always-on direct connect) ───────────────────────────
+// ── WiFi – Access Point (setup only: no video or motion data over it) ────────
 #define AP_SSID "Wifi-Camera"
-#ifndef AP_PASS
-#define AP_PASS "wificamera"
-#endif
+// Until a password is claimed. After that the hotspot uses the camera's
+// password (from its next start), unless secrets.h sets AP_PASS.
+#define AP_PASS_DEFAULT "wificamera"
 
 // Reachable as http://<HOSTNAME>.local on the router's network (mDNS)
 #define HOSTNAME "wifi-camera"
@@ -52,6 +52,10 @@
 #define I2C_SDA 1
 #define I2C_SCL 2
 #define I2C_FREQ 400000
+
+// ── BOOT button: held RESET_HOLD_MS while running → forget the password ─────
+#define RESET_BUTTON_PIN 0
+#define RESET_HOLD_MS 5000
 
 // ── Status LED ───────────────────────────────────────────────────────────────
 #define LED_PIN 21 // FireBeetle 2 user LED (LED_BUILTIN)

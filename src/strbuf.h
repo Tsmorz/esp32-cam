@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 // Copy `in` to `out` escaped for a JSON string (quotes, backslashes; control
 // characters dropped)
@@ -31,4 +32,24 @@ appendf(char *buf, size_t size, size_t &pos, const char *fmt, ...) {
   va_end(ap);
   if (n > 0)
     pos = (pos + n < size) ? pos + n : size - 1;
+}
+
+// Value of a flat "key":"string" pair in a JSON object (\" and \\ unescaped,
+// truncated to fit); false if absent
+static inline bool json_str(const char *json, const char *key, char *out,
+                            size_t outlen) {
+  char needle[64];
+  snprintf(needle, sizeof(needle), "\"%s\":\"", key);
+  const char *p = strstr(json, needle);
+  if (!p)
+    return false;
+  p += strlen(needle);
+  size_t i = 0;
+  while (*p && *p != '"' && i < outlen - 1) {
+    if (*p == '\\' && *(p + 1))
+      p++;
+    out[i++] = *p++;
+  }
+  out[i] = '\0';
+  return true;
 }

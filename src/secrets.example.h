@@ -1,15 +1,19 @@
 #pragma once
-// Copy to secrets.h (git-ignored) and fill in. Anything left undefined falls
-// back to the defaults in config.h.
+// Copy to secrets.h (git-ignored), then uncomment and fill in what you want.
+// Anything left out falls back to config.h: no home network (set it up in
+// the dashboard), and a password chosen in the dashboard on first use.
+// Whatever is set here is also saved to the camera (encrypted), so a later
+// build without secrets.h keeps it.
 
-// Home network the camera joins in STA mode (leave empty for AP-only).
-#define WIFI_SSID "MyNetwork"
-#define WIFI_PASS "MyPassword"
+// Home network the camera joins.
+// #define WIFI_SSID "MyNetwork"
+// #define WIFI_PASS "MyPassword"
 
-// Shared secret for the endpoints that change state (/ota, /wifi/connect,
-// /camera/set). The dashboard asks for it once and keeps it in localStorage.
-// Generate one with: openssl rand -hex 12
-#define API_TOKEN "change-me"
+// The camera's password (the API token): 8-63 printable characters, no
+// spaces — checked at compile time. Generate one with: openssl rand -hex 12
+// #define API_TOKEN "..."
 
-// Optional: override the always-on access point's password (min 8 chars).
-// #define AP_PASS "wificamera"
+// Optional: a fixed password for the camera's own WiFi (8-63 characters).
+// Without it the hotspot uses "wificamera" until a password is set, then
+// the camera's password.
+// #define AP_PASS "..."
