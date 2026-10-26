@@ -1,19 +1,21 @@
-# PlatformIO pre-build hook:
+# Build step (main/CMakeLists.txt), run on every build:
 # - FW_VERSION from `git describe` (v1.2.0 on a release tag, v1.2.0-3-gabc1234
 #   after it, "-dirty" with local changes) — or from the FW_VERSION
-#   environment variable when CI sets it — into src/generated/version.h,
-#   written only when it changes.
-# - FW_BUILT, the build time, into src/generated/build_time.h, every build:
-#   it tells two images apart even when the version string is the same (the
-#   dashboard and test_ota_rollback.py use it to see an update arrive).
-# Only src/build_info.cpp includes them, so this recompiles one small file.
+#   environment variable when CI sets it — into <out>/version.h, written only
+#   when it changes.
+# - FW_BUILT, the build time, into <out>/build_time.h, every build: it tells
+#   two images apart even when the version string is the same (the dashboard
+#   and test_ota_rollback.py use it to see an update arrive).
+# Only main/build_info.cpp includes them, so this recompiles one small file.
+#   python3 scripts/version.py <build>/generated
 import os
 import subprocess
+import sys
 import time
 
-Import("env")  # noqa: F821 — provided by PlatformIO/SCons
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+out_dir = sys.argv[1]
 
-root = env.subst("$PROJECT_DIR")
 # CI sets FW_VERSION to the tag it is about to create (scripts/next_version.sh):
 # the build runs before the tag exists, and should already carry its name
 version = os.environ.get("FW_VERSION", "").strip()
@@ -26,7 +28,6 @@ if not version:
     except (OSError, subprocess.CalledProcessError):
         version = "unknown"
 
-out_dir = os.path.join(root, "src", "generated")
 os.makedirs(out_dir, exist_ok=True)
 
 out = os.path.join(out_dir, "version.h")

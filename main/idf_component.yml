@@ -1,0 +1,13 @@
+# Pinned to what the PlatformIO build (pioarduino 55.03.311) used, so the
+# firmware behaves the same; dependencies.lock records the exact resolution.
+dependencies:
+  idf: "5.5.5"
+  # Arduino core 3.3.11 (built against IDF v5.5.5)
+  espressif/arduino-esp32: "3.3.11"
+  # The esp32-camera commit Arduino 3.3.11 ships: shared SCCB/I²C bus
+  # (sccb_i2c_port) and the renumbered framesize_t this firmware relies on
+  espressif/esp32-camera:
+    git: https://github.com/espressif/esp32-camera.git
+    version: 202df95d7b1dc72e9303ad78f47b8dc9f339e6a1
+  espressif/esp_jpeg: "1.3.1"
+  espressif/esp-tflite-micro: "1.3.7"

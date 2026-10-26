@@ -1,33 +1,38 @@
 version: '3'
 
+# ESP-IDF v5.5.5 build. scripts/idf.sh loads its environment, so no
+# `. export.sh` needed first. USB tasks take an optional PORT=/dev/cu.…
 vars:
-  ENV: firebeetle2_esp32s3
-  SOURCES: src/*.cpp src/*.h lib/*/*.h lib/*/*.hpp test/*/*.cpp
+  IDF: scripts/idf.sh
+  CPPCHECK_VERSION: 2.22.0
+  SOURCES: main/*.cpp main/*.h components/DFRobot_AXP313A/include/*.h components/VQF/include/*.hpp test/*/*.cpp
+  PORT_ARG: '{{if .PORT}}-p {{.PORT}}{{end}}'
 
 tasks:
   init:
-    desc: "First-time setup: check tools, create src/secrets.h, fetch toolchains and libraries"
+    desc: "First-time setup: check tools, create main/secrets.h, fetch the components"
     cmds:
       - |
         missing=0
-        for tool in pio clang-format; do
+        for tool in cmake clang-format cppcheck; do
           command -v $tool >/dev/null || { echo "MISSING: $tool"; missing=1; }
         done
         if [ $missing = 1 ]; then
-          echo "Install with: pip install platformio==6.1.19 clang-format==21.1.8  (or brew install clang-format)"
+          echo "Install with: brew install cmake ninja clang-format cppcheck"
           exit 1
         fi
         clang-format --version | grep -q 'version 21\.' || \
           echo "WARNING: CI uses clang-format 21.x, you have: $(clang-format --version)"
+        cppcheck --version | grep -q '{{.CPPCHECK_VERSION}}' || \
+          echo "WARNING: CI uses cppcheck {{.CPPCHECK_VERSION}}, you have: $(cppcheck --version)"
       - |
-        if [ -f src/secrets.h ]; then
-          echo "src/secrets.h exists"
+        if [ -f main/secrets.h ]; then
+          echo "main/secrets.h exists"
         else
-          cp src/secrets.example.h src/secrets.h
-          echo "Created src/secrets.h — uncomment and set what you want (all optional)"
+          cp main/secrets.example.h main/secrets.h
+          echo "Created main/secrets.h — uncomment and set what you want (all optional)"
         fi
-      - pio pkg install -e {{.ENV}}
-      - pio pkg install -e native
+      - "{{.IDF}} reconfigure"
       - echo "Ready. Next{{":"}} task ci"
 
   smoke:
@@ -41,31 +46,54 @@ tasks:
       - python3 scripts/test_ota_rollback.py {{.CLI_ARGS}}
 
   build:
-    desc: "Compile firmware"
+    desc: "Compile firmware → build/wifi-camera.bin (OTA) and build/wifi-camera-factory.bin (blank board, offset 0x0)"
     cmds:
-      - pio run -e {{.ENV}}
+      - "{{.IDF}} build"
+      - "{{.IDF}} merge-bin -o wifi-camera-factory.bin"
+
+  size:
+    desc: "Memory use per component"
+    cmds:
+      - "{{.IDF}} size-components"
+
+  menuconfig:
+    desc: "Browse the configuration (copy what you change into sdkconfig.defaults)"
+    interactive: true
+    cmds:
+      - "{{.IDF}} menuconfig"
 
   test:
-    desc: "Unit tests on this machine (token rules, JSON helpers, VQF + compass) — no board needed"
+    desc: "Unit tests on this machine (token rules, JSON helpers, VQF + compass, MOV, detection) — no board needed"
     cmds:
-      - pio test -e native
+      - cmake -S test -B build-test -DCMAKE_BUILD_TYPE=Debug
+      - cmake --build build-test
+      - ctest --test-dir build-test --output-on-failure
 
   flash:
-    desc: "Flash firmware, then open serial monitor — Ctrl+C to exit"
+    desc: "Flash over USB, then open the serial monitor — Ctrl+] to exit"
+    interactive: true
     cmds:
-      - pkill -f "pio device monitor" || true
-      - pio run -e {{.ENV}} -t upload
-      - pio device monitor -e {{.ENV}}
+      - pkill -f "idf.py.*monitor" || true
+      - "{{.IDF}} {{.PORT_ARG}} flash monitor"
 
   monitor:
-    desc: "Open serial monitor only (no reflash) — Ctrl+C to exit"
+    desc: "Open serial monitor only (no reflash) — Ctrl+] to exit"
+    interactive: true
     cmds:
-      - pio device monitor -e {{.ENV}}
+      - "{{.IDF}} {{.PORT_ARG}} monitor"
 
   check:
-    desc: "Static analysis (cppcheck) — fails on HIGH or MEDIUM findings"
+    desc: "Static analysis (cppcheck {{.CPPCHECK_VERSION}}) — fails on errors and warnings"
     cmds:
-      - pio check -e {{.ENV}} --skip-packages --fail-on-defect high --fail-on-defect medium
+      # dangerousTypeCast (C casts in socket/NVS calls) and
+      # uninitMemberVarNoCtor (plain aggregates) are style, not defects
+      - >-
+        cppcheck --std=c++17 --language=c++ --enable=warning --inline-suppr
+        --suppress=missingIncludeSystem --suppress=dangerousTypeCast
+        --suppress=uninitMemberVarNoCtor --error-exitcode=1 --quiet
+        --template='{file}:{line}: {severity} ({id}): {message}'
+        -I main -I components/VQF/include -I components/DFRobot_AXP313A/include
+        main components/VQF components/DFRobot_AXP313A
 
   format:
     desc: "Format all sources with clang-format"
@@ -89,9 +117,11 @@ tasks:
   clean:
     desc: "Remove build artifacts (full rebuild next time)"
     cmds:
-      - pio run -e {{.ENV}} -t clean
+      - "{{.IDF}} fullclean"
+      - rm -rf build-test
 
   factory:
-    desc: "Erase all flash — clears saved WiFi credentials (reflash afterwards)"
+    desc: "Erase all flash over USB — clears saved WiFi and the password (reflash afterwards)"
+    interactive: true
     cmds:
-      - pio run -e {{.ENV}} --target erase
+      - "{{.IDF}} {{.PORT_ARG}} erase-flash"

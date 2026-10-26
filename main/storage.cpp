@@ -13,10 +13,12 @@ static constexpr const char *DIR = "/WCAM";
 static constexpr uint32_t SPI_HZ = 16000000; // jumper wires: not the max
 static constexpr uint64_t KEEP_FREE = 2 * 1024 * 1024; // "full" below this
 
+namespace { // settings.cpp has its own Entry: keep them apart for the linker
 struct Entry {
   uint32_t seq, size, time; // time: Unix seconds, 0 = unknown
   FileKind kind;
 };
+} // namespace
 
 static SPIClass *_spi = nullptr;
 static bool _wired = false, _mounted = false;

@@ -1,6 +1,10 @@
-.pio/
 .vscode/
-src/secrets.h
-src/generated/
+main/secrets.h
 .DS_Store
 __pycache__/
+build/
+build-*/
+managed_components/
+sdkconfig
+sdkconfig.old
+.pio/
