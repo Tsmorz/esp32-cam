@@ -18,7 +18,7 @@ target_compile_definitions(unity PUBLIC UNITY_INCLUDE_DOUBLE)
 
 enable_testing()
 set(root ${CMAKE_CURRENT_SOURCE_DIR}/..)
-foreach(name test_token_rules test_strbuf test_vqf test_mov test_detect)
+foreach(name test_token_rules test_strbuf test_vqf test_mov test_detect test_ov5640)
     add_executable(${name} ${name}/test_main.cpp)
     target_include_directories(${name} PRIVATE ${root}/main ${root}/components/VQF/include)
     target_link_libraries(${name} PRIVATE unity)

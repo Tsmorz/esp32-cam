@@ -1,4 +1,5 @@
 #include "camera.h"
+#include "camera_light.h"
 #include "camera_profile.h"
 #include "config.h"
 #include "focus.h"
@@ -18,9 +19,9 @@ static const char *STREAM_PART =
 // Settings that survive a reboot, restored in this order (framesize first:
 // changing it re-initialises parts of the sensor)
 static const char *const PERSISTED[] = {
-    "framesize", "quality",  "brightness", "contrast", "saturation",
-    "sharpness", "ae_level", "awb",        "wb_mode",  "aec",
-    "agc",       "hmirror",  "vflip",      "af"};
+    "framesize", "quality", "brightness", "contrast", "saturation", "sharpness",
+    "ae_level",  "awb",     "wb_mode",    "aec",      "agc",        "hmirror",
+    "vflip",     "af",      "flicker",    "lowlight"};
 
 bool camera_init() {
   camera_config_t config = {};
@@ -73,6 +74,7 @@ bool camera_init() {
     s->set_gain_ctrl(s, 1);
     s->set_bpc(s, 1);
     s->set_wpc(s, 1);
+    camera_light_apply(); // after set_aec2: the OV5640's night mode is ours
   }
 
   Serial.printf("[cam] %s ready\n", camera_sensor_name());
@@ -118,6 +120,14 @@ static bool apply(sensor_t *s, const char *var, int val) {
     return s->set_vflip(s, val) == 0;
   if (!strcmp(var, "af"))
     return focus_set_mode(val);
+  if (!strcmp(var, "flicker"))
+    return camera_light_set_flicker(val);
+  if (!strcmp(var, "lowlight"))
+    return camera_light_set_lowlight(val);
+  // Test pattern made inside the sensor: artifacts on it come from after the
+  // pixel array (ISP, JPEG, the DVP bus). Not persisted.
+  if (!strcmp(var, "colorbar") && flag && s->set_colorbar)
+    return s->set_colorbar(s, val) == 0;
   return false;
 }
 
@@ -169,11 +179,15 @@ size_t camera_status_json(char *buf, size_t size) {
         "\"contrast\":%d,\"saturation\":%d,\"sharpness\":%d,\"ae_level\":%d,"
         "\"awb\":%d,\"wb_mode\":%d,\"aec\":%d,\"agc\":%d,\"hmirror\":%d,"
         "\"vflip\":%d,\"af\":%d,\"af_state\":\"%s\",\"af_raw\":%d,"
-        "\"viewers\":%d}",
+        "\"viewers\":%d,\"colorbar\":%d",
         camera_sensor_name(), camera_stream_size(), c.quality, c.brightness,
         c.contrast, c.saturation, c.sharpness, c.ae_level, c.awb, c.wb_mode,
         c.aec, c.agc, c.hmirror, c.vflip, focus_mode(), focus_state(),
-        focus_raw_status(), camera_stream_viewers());
+        focus_raw_status(), camera_stream_viewers(), c.colorbar);
+    if (n >= 0 && (size_t)n < size)
+      n += camera_light_json(buf + n, size - n);
+    if (n >= 0 && (size_t)n + 1 < size)
+      n += snprintf(buf + n, size - n, "}");
   }
   if (n < 0)
     return 0;

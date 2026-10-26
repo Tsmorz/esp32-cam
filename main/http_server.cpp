@@ -214,7 +214,7 @@ static esp_err_t status_handler(httpd_req_t *req) {
 // ── /camera/status — current sensor settings, to populate the Camera page
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t camera_status_handler(httpd_req_t *req) {
-  char buf[640];
+  char buf[896];
   size_t len = camera_status_json(buf, sizeof(buf));
   httpd_resp_set_type(req, "application/json");
   httpd_resp_send(req, buf, len);
