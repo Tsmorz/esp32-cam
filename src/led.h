@@ -5,7 +5,7 @@
 enum LedMode {
   LED_BOOT,  // fast blink: starting up
   LED_WIFI,  // slow blink: joining WiFi
-  LED_IDLE,  // heartbeat: running
+  LED_IDLE,  // steady on: running normally
   LED_ERROR, // double blink: camera failed
   LED_OTA,   // flicker: firmware update in progress
 };

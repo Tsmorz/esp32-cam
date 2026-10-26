@@ -35,15 +35,20 @@
 // Core 0 (radio): the SDK already pins WiFi (prio 23), esp_timer (22), lwIP
 //   (18) and the camera DMA task here. Both HTTP servers join them, so all
 //   network I/O stays on one core.
-// Core 1: the IMU task (samples at 52 Hz, short and periodic), the status LED
-//   and Arduino loop() (prio 1: serial, autofocus, housekeeping). The camera
-//   needs no core of its own: JPEG is encoded in the sensor and capture is DMA.
+// Core 1: the IMU task (samples at 52 Hz, short and periodic), the recorder
+//   (memory card writes), animal detection (CPU-heavy, so the same priority
+//   as loop(): they take turns), the status LED and Arduino loop() (prio 1:
+//   serial, autofocus, housekeeping). The camera needs no core of its own:
+//   JPEG is encoded in the sensor and capture is DMA.
+// Core 0 also runs the file worker (gallery downloads, async httpd).
 #define NET_CORE 0
 #define APP_CORE 1
 
 #define PRIO_HTTP_CTRL 6   // dashboard, JSON, OTA
 #define PRIO_HTTP_STREAM 5 // MJPEG
 #define PRIO_IMU 10        // short, periodic, must not miss samples
+#define PRIO_REC 3         // memory card: photos, clips, timelapse
+#define PRIO_DETECT 1      // animal detection: as loop(), shares core 1
 #define PRIO_LED 1         // status LED, 50 Hz tick
 
 // ── I²C ──────────────────────────────────────────────────────────────────────

@@ -53,3 +53,26 @@ static inline bool json_str(const char *json, const char *key, char *out,
   out[i] = '\0';
   return true;
 }
+
+// Decode a query-string value in place (%XX and '+'); the httpd hands them
+// over still encoded
+static inline void url_decode(char *s) {
+  char *o = s;
+  for (; *s; s++) {
+    const auto hex = [](char c) {
+      return c >= '0' && c <= '9'   ? c - '0'
+             : c >= 'a' && c <= 'f' ? c - 'a' + 10
+             : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                    : -1;
+    };
+    if (*s == '+') {
+      *o++ = ' ';
+    } else if (*s == '%' && hex(s[1]) >= 0 && hex(s[2]) >= 0) {
+      *o++ = (char)(hex(s[1]) * 16 + hex(s[2]));
+      s += 2;
+    } else {
+      *o++ = *s;
+    }
+  }
+  *o = '\0';
+}

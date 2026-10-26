@@ -2,12 +2,17 @@
 #include "board.h"
 #include "camera.h"
 #include "config.h"
+#include "detect.h"
 #include "focus.h"
 #include "http_server.h"
 #include "imu.h"
 #include "led.h"
+#include "options.h"
 #include "ota_health.h"
+#include "power.h"
+#include "recorder.h"
 #include "settings.h"
+#include "storage.h"
 #include "system.h"
 #include "wifi_mgr.h"
 #include <Arduino.h>
@@ -68,8 +73,22 @@ void setup() {
     delay(10);
   Serial.setDebugOutput(true);
   Serial.println("\n[boot] FireBeetle 2 ESP32-S3");
+  power_init();
   ota_health_init();
   settings_init();
+  options_init();
+  if (power_woke_for_timelapse()) {
+    // Woken from sleep for a timelapse photo: take it and sleep again, no
+    // WiFi. The IMU is left alone — it still holds its wake-up setup.
+    board_init();
+    if (camera_init()) {
+      focus_init();
+      camera_restore();
+      if (storage_init())
+        recorder_timelapse_now();
+    }
+    power_sleep_now();
+  }
   auth_init();
   led_start(APP_CORE, PRIO_LED); // fast blink until ready
 
@@ -83,6 +102,7 @@ void setup() {
   } else {
     Serial.println("[boot] no camera — dashboard, IMU and OTA still run");
   }
+  storage_init(); // the memory card, if its pins are set
 
   Serial.printf("[boot] WIFI_SSID %s; API token: %s\n",
                 WIFI_SSID[0] ? "compiled in"
@@ -92,9 +112,13 @@ void setup() {
                                     : "NOT SET — claim it in the dashboard");
   led_set(LED_WIFI);
   wifi_start();
+  // UTC from the internet once on the home network: file times, timelapse
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
   http_start();
 
   imu_start(APP_CORE, PRIO_IMU); // last, so bring-up runs uncontended
+  recorder_start(APP_CORE, PRIO_REC);
+  detect_start(APP_CORE, PRIO_DETECT);
   pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
   led_set(cam_ok ? LED_IDLE : LED_ERROR);
   ota_health_start();
@@ -131,6 +155,7 @@ void loop() {
     // network to reach them on
     ota_health_tick(http_running() && (WiFi.status() == WL_CONNECTED ||
                                        (WiFi.getMode() & WIFI_AP)));
+    power_tick(); // deep sleep once idle, if set up
   }
   delay(10);
 }

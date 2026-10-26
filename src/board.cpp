@@ -5,6 +5,7 @@
 #include <Wire.h>
 
 static DFRobot_AXP313A axp;
+static bool _axp = false;
 
 void board_init() {
   // One I²C bus: AXP313A, the IMU board and — once camera_init() joins it —
@@ -19,6 +20,7 @@ void board_init() {
     if (!axp_found)
       delay(200);
   }
+  _axp = axp_found;
   if (axp_found) {
     if (axp.enableCameraPower(axp.eOV2640))
       Serial.println("[axp] camera power enabled");
@@ -29,4 +31,9 @@ void board_init() {
   } else {
     Serial.println("[axp] not found — assuming V1.1+ (no PMIC)");
   }
+}
+
+void board_camera_power_off() {
+  if (_axp)
+    axp.disableCameraPower();
 }

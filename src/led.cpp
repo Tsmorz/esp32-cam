@@ -5,12 +5,13 @@
 static volatile LedMode _mode = LED_BOOT;
 static volatile LedMode _rest = LED_BOOT; // the last mode that isn't LED_OTA
 
-// Alternating on/off durations in ms, starting with "on"; 0 terminates.
+// Alternating on/off durations in ms, starting with "on"; 0 terminates. A
+// single "on" entry is steady on.
 // Indexed by LedMode — keep in enum order.
 static const uint16_t PATTERNS[][5] = {
     {100, 100, 0},            // LED_BOOT
     {500, 500, 0},            // LED_WIFI
-    {60, 1940, 0},            // LED_IDLE
+    {1000, 0},                // LED_IDLE
     {150, 150, 150, 1550, 0}, // LED_ERROR
     {40, 40, 0},              // LED_OTA
 };

@@ -47,6 +47,16 @@ public:
     return true;
   }
 
+  // Before deep sleep: ALDO1 and DLDO1 off (the camera's power-down pin
+  // isn't wired, so this is how it stops drawing current). Same care as above
+  bool disableCameraPower() {
+    const int ctl = readReg(AXP313A_PWR_CTL);
+    if (ctl < 0)
+      return false;
+    writeReg(AXP313A_PWR_CTL, (uint8_t)ctl & ~(0x08 | 0x10));
+    return true;
+  }
+
 private:
   TwoWire *_wire = &Wire;
 

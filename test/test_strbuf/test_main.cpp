@@ -51,6 +51,12 @@ void test_appendf_truncates_without_overrun() {
   TEST_ASSERT_EQUAL_UINT(7, pos);
 }
 
+void test_url_decode() {
+  char s[] = "cat%2C+dog%20%41%zz";
+  url_decode(s);
+  TEST_ASSERT_EQUAL_STRING("cat, dog A%zz", s);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_json_str_reads_values);
@@ -58,5 +64,6 @@ int main() {
   RUN_TEST(test_json_str_truncates);
   RUN_TEST(test_json_esc_escapes_and_drops_control);
   RUN_TEST(test_appendf_truncates_without_overrun);
+  RUN_TEST(test_url_decode);
   return UNITY_END();
 }

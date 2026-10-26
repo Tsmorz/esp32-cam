@@ -5,10 +5,11 @@
 // the layout, and resets them.
 
 namespace settings {
-static constexpr const char *SYS = "sys";    // schema version, API token
-static constexpr const char *CAMERA = "cam"; // sensor settings + stream size
-static constexpr const char *WIFI = "wifi";  // network picked in the dashboard
-static constexpr const char *IMU = "imu";    // compass calibration
+static constexpr const char *SYS = "sys";     // schema version, API token
+static constexpr const char *CAMERA = "cam";  // sensor settings + stream size
+static constexpr const char *WIFI = "wifi";   // network picked in the dashboard
+static constexpr const char *IMU = "imu";     // compass calibration
+static constexpr const char *OPTIONS = "opt"; // wiring, automation (options.h)
 // Passwords, encrypted (secret_store.h)
 static constexpr const char *TOKEN_KEY = "token_x";    // in SYS: claimed token
 static constexpr const char *WIFI_PASS_KEY = "pass_x"; // in WIFI
@@ -23,4 +24,4 @@ static constexpr int SETTINGS_SCHEMA = 3;
 
 void settings_init();  // first thing in setup(): migrate old layouts
 int settings_schema(); // what is stored (0 = fresh flash)
-bool settings_reset(const char *scope); // camera|wifi|imu|token|all
+bool settings_reset(const char *scope); // camera|wifi|imu|options|token|all
