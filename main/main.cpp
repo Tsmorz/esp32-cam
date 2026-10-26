@@ -29,8 +29,8 @@ static void print_stats() {
   } else {
     Serial.println("  sta  : not connected");
   }
-  Serial.printf("  heap : %u free\n", ESP.getFreeHeap());
-  Serial.printf("  psram: %u free\n", ESP.getFreePsram());
+  Serial.printf("  heap : %u free\n", (unsigned)ESP.getFreeHeap());
+  Serial.printf("  psram: %u free\n", (unsigned)ESP.getFreePsram());
   Serial.printf("  temp : %.1f °C (chip)\n", temperatureRead());
   Serial.println("=============");
 }

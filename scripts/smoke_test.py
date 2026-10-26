@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a running board after an OTA (or any change).
 
-  scripts/smoke_test.py                       # wifi-camera.local, token from src/secrets.h
+  scripts/smoke_test.py                       # wifi-camera.local, token from main/secrets.h
   scripts/smoke_test.py -H 192.168.1.50 --token abc12345
 
 Checks: dashboard and /status, token handling, state changes are POST-only,
@@ -59,7 +59,7 @@ def main():
     if not status.get("auth"):
         print("  note the board has no token yet (claim one in the dashboard); token checks skipped")
     elif not token:
-        print("  note no token given (--token or src/secrets.h); authenticated checks skipped")
+        print("  note no token given (--token or main/secrets.h); authenticated checks skipped")
     else:
         check("wrong token refused", http(host, "/auth", token="wrong-token-x")[0] == 401)
         st, hdrs, _ = http(host, "/auth", token=token)

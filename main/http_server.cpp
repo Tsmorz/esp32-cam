@@ -350,7 +350,7 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
   for (int i = 0; i < n && i < 24; i++) {
     json_esc(WiFi.SSID(i).c_str(), esc, sizeof(esc));
     appendf(buf, BUF, pos, "%s{\"ssid\":\"%s\",\"rssi\":%d,\"enc\":%d}",
-            i > 0 ? "," : "", esc, WiFi.RSSI(i),
+            i > 0 ? "," : "", esc, (int)WiFi.RSSI(i),
             (int)(WiFi.encryptionType(i) != WIFI_AUTH_OPEN));
   }
   appendf(buf, BUF, pos, "]}");
@@ -467,7 +467,8 @@ static esp_err_t camera_set_handler(httpd_req_t *req) {
 // ─────────────────────────────────────────────────────────────────
 static esp_err_t options_handler(httpd_req_t *req) {
   char buf[768];
-  return send_json(req, buf, options_json(buf, sizeof(buf)));
+  size_t n = options_json(buf, sizeof(buf));
+  return send_json(req, buf, n);
 }
 
 // POST /options/set?key=&val= — one at a time, as the dashboard changes it

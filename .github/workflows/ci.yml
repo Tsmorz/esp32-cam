@@ -70,9 +70,28 @@ jobs:
   analyze:
     name: Static analysis
     runs-on: ubuntu-latest
+    env:
+      CPPCHECK_VERSION: "2.22.0" # same as CPPCHECK_VERSION in Taskfile.yml
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-platformio
+      # Ubuntu's cppcheck is older and finds different things: build the
+      # pinned release once, then reuse it
+      - uses: actions/cache@v6
+        id: cppcheck
+        with:
+          path: ~/cppcheck
+          key: cppcheck-${{ env.CPPCHECK_VERSION }}-${{ runner.os }}
+      - if: steps.cppcheck.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL "https://github.com/danmar/cppcheck/archive/refs/tags/$CPPCHECK_VERSION.tar.gz" | tar xz
+          cmake -S "cppcheck-$CPPCHECK_VERSION" -B cppcheck-build -DCMAKE_BUILD_TYPE=Release \
+                -DUSE_MATCHCOMPILER=ON -DCMAKE_INSTALL_PREFIX="$HOME/cppcheck"
+          cmake --build cppcheck-build -j "$(nproc)" --target install
+      - run: echo "$HOME/cppcheck/bin" >> "$GITHUB_PATH"
+      - uses: arduino/setup-task@v3
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
       - run: task check
 
   test:
@@ -80,13 +99,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-platformio
-      - run: task test
+      - uses: arduino/setup-task@v3
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      - run: task test # CMake + CTest, Unity fetched by test/CMakeLists.txt
 
   build:
     name: Build firmware
     needs: version
     runs-on: ubuntu-latest
+    # Espressif's image: the exact ESP-IDF and toolchain (scripts/idf.sh
+    # loads it from $IDF_PATH)
+    container: espressif/idf:v5.5.5
     env:
       # The version this run will release, so the firmware already reports
       # it; empty → scripts/version.py uses git describe
@@ -95,17 +120,28 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # tags, for the version string (git describe)
-      - uses: ./.github/actions/setup-platformio
+      # The checkout belongs to the runner's user, the container runs as root
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: arduino/setup-task@v3
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      # Arduino and the other components (main/idf_component.yml), pinned by
+      # dependencies.lock
+      - uses: actions/cache@v6
+        with:
+          path: managed_components
+          key: components-${{ hashFiles('dependencies.lock') }}
 
       # No secrets.h in CI: config.h falls back to empty credentials
-      - run: task build | tee build.log
+      - run: task build
 
       - name: Size report
         run: |
           {
-            echo "### Firmware $(sed -n 's/#define FW_VERSION "\(.*\)"/\1/p' src/generated/version.h)"
+            echo "### Firmware $(sed -n 's/#define FW_VERSION "\(.*\)"/\1/p' build/esp-idf/main/generated/version.h)"
             echo '```'
-            grep -E '^(RAM|Flash):' build.log
+            scripts/idf.sh size | sed -n '/Memory Type Usage Summary/,$p'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -113,8 +149,8 @@ jobs:
         with:
           name: firmware
           path: |
-            .pio/build/firebeetle2_esp32s3/firmware.bin
-            .pio/build/firebeetle2_esp32s3/firmware.factory.bin
+            build/wifi-camera.bin
+            build/wifi-camera-factory.bin
           if-no-files-found: error
 
   tag:
@@ -168,8 +204,8 @@ jobs:
         working-directory: dist
         run: |
           name="${GITHUB_REPOSITORY#*/}-${TAG}"
-          mv firmware.bin "$name.bin"                 # OTA / dashboard upload
-          mv firmware.factory.bin "$name-factory.bin" # blank board, offset 0x0
+          mv wifi-camera.bin "$name.bin"                 # OTA / dashboard upload
+          mv wifi-camera-factory.bin "$name-factory.bin" # blank board, offset 0x0
           sha256sum -- *.bin > SHA256SUMS
 
       - name: Publish GitHub release

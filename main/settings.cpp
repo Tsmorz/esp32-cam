@@ -25,12 +25,14 @@ static void clear_ns(const char *ns) {
 // have filled with the password: WiFi.persistent(false) keeps it empty now.
 // A power cut in the middle loses the settings — a one-time risk, on the
 // first boot of schema 3.
+namespace { // storage.cpp has its own Entry: keep them apart for the linker
 struct Entry {
   char ns[NVS_KEY_NAME_MAX_SIZE], key[NVS_KEY_NAME_MAX_SIZE];
   nvs_type_t type;
   uint64_t num;
   std::vector<uint8_t> data; // STR (with its NUL) and BLOB
 };
+} // namespace
 
 static bool read_entry(const nvs_entry_info_t &info, Entry &e) {
   nvs_handle_t h;

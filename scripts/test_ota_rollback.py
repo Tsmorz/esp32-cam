@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prove that a bad firmware update rolls back on a real board.
 
-  scripts/test_ota_rollback.py                  # wifi-camera.local, token from src/secrets.h
+  scripts/test_ota_rollback.py                  # wifi-camera.local, token from main/secrets.h
   scripts/test_ota_rollback.py -H 192.168.1.50 --token abc12345
 
 Builds a copy of the firmware that crashes shortly before the 20 s OTA confirm
@@ -15,7 +15,6 @@ image, e.g. polling missed its short window).
 The board is left running its previous firmware. Uses the token like /ota does.
 """
 import argparse
-import os
 import subprocess
 import sys
 import tempfile
@@ -41,7 +40,6 @@ def status(host):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     add_board_args(ap)
-    ap.add_argument("--env", default="firebeetle2_esp32s3")
     ap.add_argument("--timeout", type=float, default=150, help="seconds to wait for the outcome")
     args = ap.parse_args()
     host, token = args.host, resolve_token(args)
@@ -60,9 +58,9 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="ota-crash-") as tmp:
         print("building the crashing image…")
-        env = dict(os.environ, PLATFORMIO_BUILD_FLAGS="-DTEST_CRASH_AFTER_BOOT=1", PLATFORMIO_BUILD_DIR=tmp)
-        r = subprocess.run(["pio", "run", "-e", args.env], cwd=ROOT, env=env)
-        image = Path(tmp) / args.env / "firmware.bin"
+        r = subprocess.run([str(ROOT / "scripts" / "idf.sh"), "-B", tmp,
+                            "-DTEST_CRASH_AFTER_BOOT=1", "build"], cwd=ROOT)
+        image = Path(tmp) / "wifi-camera.bin"
         if r.returncode or not image.exists():
             print("build failed")
             return 1
