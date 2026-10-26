@@ -1,11 +1,23 @@
 name: CI
 
-# format ─┐
-# analyze ├─► release   (only for a pushed v* tag)
-# test ───┤
-# build ──┘
+# version ─┐
+# format ──┤
+# analyze ─┼─► tag (push to main / development) ─► release
+# test ────┤        (or a pushed v* tag)
+# build ───┘
 #
-# Every job runs the same `task` command you run locally (Taskfile.yml).
+# Every check job runs the same `task` command you run locally (Taskfile.yml).
+#
+# Releases (scripts/next_version.sh decides):
+# - main: every push whose commit isn't tagged yet gets the next version
+#   (patch, or minor/major with "#minor" / "#major" in a commit message or
+#   the PR title), built into the firmware, tagged and released once all
+#   checks pass
+# - development: the rolling pre-release "dev" — its tag moves to the commit
+#   and its files are replaced; the firmware reports e.g. v1.4.1-dev.3+abc1234
+# - a v* tag pushed by hand: that tag
+# Tags pushed with GITHUB_TOKEN don't start another workflow run, so the
+# release happens here, in the same run.
 
 on:
   push: # branches and tags
@@ -14,7 +26,8 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  # Never cancel a run that may tag and release: it could stop in between
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/development' }}
 
 permissions:
   contents: read
@@ -24,6 +37,20 @@ defaults:
     shell: bash # explicit, so steps run with -eo pipefail (build | tee)
 
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}         # release to publish, or ""
+      version: ${{ steps.next.outputs.version }} # what the firmware reports
+      previous: ${{ steps.next.outputs.previous }} # release notes start here
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # tags and the commits since the last one
+      - id: next
+        run: scripts/next_version.sh | tee -a "$GITHUB_OUTPUT"
+
   format:
     name: Format
     runs-on: ubuntu-latest
@@ -58,7 +85,12 @@ jobs:
 
   build:
     name: Build firmware
+    needs: version
     runs-on: ubuntu-latest
+    env:
+      # The version this run will release, so the firmware already reports
+      # it; empty → scripts/version.py uses git describe
+      FW_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -85,13 +117,46 @@ jobs:
             .pio/build/firebeetle2_esp32s3/firmware.factory.bin
           if-no-files-found: error
 
-  release:
-    name: Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [format, analyze, test, build]
+  tag:
+    name: Tag
+    if: >-
+      github.event_name == 'push' && needs.version.outputs.tag != '' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development')
+    needs: [version, format, analyze, test, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Push ${{ env.TAG }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ "$TAG" == dev ]]; then # the rolling one moves to this commit
+            git tag -f -a dev -m "Development build $VERSION"
+            git push -f origin refs/tags/dev
+          else
+            git tag -a "$TAG" -m "$TAG"
+            git push origin "$TAG"
+          fi
+
+  release:
+    name: Release
+    # A pushed v* tag (tag job skipped), or the tag job just created one
+    if: >-
+      !cancelled() && needs.version.outputs.tag != '' &&
+      needs.format.result == 'success' && needs.analyze.result == 'success' &&
+      needs.test.result == 'success' && needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') || needs.tag.result == 'success')
+    needs: [version, format, analyze, test, build, tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
     steps:
       # The exact binaries the build job produced and the other jobs vetted
       - uses: actions/download-artifact@v8
@@ -102,17 +167,35 @@ jobs:
       - name: Name assets after the tag
         working-directory: dist
         run: |
-          name="${GITHUB_REPOSITORY#*/}-${GITHUB_REF_NAME}"
+          name="${GITHUB_REPOSITORY#*/}-${TAG}"
           mv firmware.bin "$name.bin"                 # OTA / dashboard upload
           mv firmware.factory.bin "$name-factory.bin" # blank board, offset 0x0
-          sha256sum *.bin > SHA256SUMS
+          sha256sum -- *.bin > SHA256SUMS
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PREVIOUS: ${{ needs.version.outputs.previous }}
         run: |
+          if [[ "$TAG" == dev ]]; then
+            # The rolling development build: updated in place, so its links
+            # never break, and never marked as the latest release
+            notes="Development build $VERSION from ${GITHUB_SHA::7}, $(date -u '+%Y-%m-%d %H:%M') UTC. Replaced on every push to development — for testing, not a release."
+            if gh release view dev --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload dev dist/* --clobber --repo "$GITHUB_REPOSITORY"
+              gh release edit dev --repo "$GITHUB_REPOSITORY" --prerelease \
+                --title "Development build ($VERSION)" --notes "$notes"
+            else
+              gh release create dev dist/* --repo "$GITHUB_REPOSITORY" \
+                --prerelease --latest=false --verify-tag \
+                --title "Development build ($VERSION)" --notes "$notes"
+            fi
+            exit 0
+          fi
           flags=()
-          [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease) # v1.2.0-rc1
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+          [[ "$TAG" == *-* ]] && flags+=(--prerelease) # v1.2.0-rc1
+          [[ -n "$PREVIOUS" ]] && flags+=(--notes-start-tag "$PREVIOUS")
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" \
             --generate-notes --verify-tag "${flags[@]}"

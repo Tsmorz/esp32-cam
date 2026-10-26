@@ -1,6 +1,7 @@
 # PlatformIO pre-build hook:
 # - FW_VERSION from `git describe` (v1.2.0 on a release tag, v1.2.0-3-gabc1234
-#   after it, "-dirty" with local changes) into src/generated/version.h,
+#   after it, "-dirty" with local changes) — or from the FW_VERSION
+#   environment variable when CI sets it — into src/generated/version.h,
 #   written only when it changes.
 # - FW_BUILT, the build time, into src/generated/build_time.h, every build:
 #   it tells two images apart even when the version string is the same (the
@@ -13,13 +14,17 @@ import time
 Import("env")  # noqa: F821 — provided by PlatformIO/SCons
 
 root = env.subst("$PROJECT_DIR")
-try:
-    version = subprocess.check_output(
-        ["git", "describe", "--tags", "--always", "--dirty"],
-        cwd=root, text=True, stderr=subprocess.DEVNULL,
-    ).strip()
-except (OSError, subprocess.CalledProcessError):
-    version = "unknown"
+# CI sets FW_VERSION to the tag it is about to create (scripts/next_version.sh):
+# the build runs before the tag exists, and should already carry its name
+version = os.environ.get("FW_VERSION", "").strip()
+if not version:
+    try:
+        version = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=root, text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        version = "unknown"
 
 out_dir = os.path.join(root, "src", "generated")
 os.makedirs(out_dir, exist_ok=True)

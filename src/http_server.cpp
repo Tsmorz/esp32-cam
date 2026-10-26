@@ -4,14 +4,19 @@
 #include "camera.h"
 #include "camera_profile.h"
 #include "config.h"
+#include "detect.h"
 #include "focus.h"
 #include "generated/web_index.h"
 #include "http_util.h"
 #include "imu.h"
 #include "led.h"
+#include "options.h"
 #include "ota_health.h"
+#include "power.h"
+#include "recorder.h"
 #include "secret_store.h"
 #include "settings.h"
+#include "storage.h"
 #include "strbuf.h"
 #include "system.h"
 #include "token_rules.h"
@@ -144,7 +149,7 @@ static esp_err_t index_handler(httpd_req_t *req) {
 // ── /status — everything the dashboard's header and System page show
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t status_handler(httpd_req_t *req) {
-  char buf[1280];
+  char buf[1600];
   size_t pos = 0;
   const sensor_t *sen = esp_camera_sensor_get();
   const bool sta = WiFi.status() == WL_CONNECTED;
@@ -179,6 +184,16 @@ static esp_err_t status_handler(httpd_req_t *req) {
           "\"imu\":{\"state\":\"%s\",\"samples\":%lu,\"errors\":%lu,"
           "\"mag\":\"%s\"},",
           imu, (unsigned long)imu_n, (unsigned long)imu_err, imu_mag_state());
+  // Memory card, sleep, detection: what the Photos and Settings pages show
+  appendf(buf, sizeof(buf), pos,
+          "\"storage\":{\"state\":\"%s\",\"total\":%llu,\"used\":%llu,"
+          "\"recording\":%s,\"rec_s\":%d,\"why\":\"%s\"},"
+          "\"power\":{\"wake\":\"%s\",\"blocker\":\"%s\",\"idle_s\":%d},"
+          "\"detect\":{\"state\":\"%s\"},",
+          storage_state(), storage_total(), storage_used(),
+          recorder_recording() ? "true" : "false", recorder_rec_s(),
+          recorder_why(), power_wake_cause(), power_sleep_blocker(),
+          power_idle_s(), detect_state());
   // ap_on: wifi_tick() turns the hotspot off while STA is up and nobody uses
   // it. ap_key: its WiFi password is the default, the camera's or AP_PASS.
   appendf(buf, sizeof(buf), pos,
@@ -448,6 +463,260 @@ static esp_err_t camera_set_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+// ── Options: wiring, automation, sleep, detection
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t options_handler(httpd_req_t *req) {
+  char buf[768];
+  return send_json(req, buf, options_json(buf, sizeof(buf)));
+}
+
+// POST /options/set?key=&val= — one at a time, as the dashboard changes it
+static esp_err_t options_set_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[200] = {}, key[24] = {}, val[128] = {};
+  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK ||
+      httpd_query_key_value(qs, "key", key, sizeof(key)) != ESP_OK ||
+      httpd_query_key_value(qs, "val", val, sizeof(val)) == ESP_ERR_NOT_FOUND) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "key and val");
+    return ESP_FAIL;
+  }
+  url_decode(val);
+  bool restart;
+  const char *why;
+  if (!options_set(key, val, &restart, &why)) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, why);
+    return ESP_FAIL;
+  }
+  const char *msg = restart ? "{\"restart\":true}" : "{\"restart\":false}";
+  return send_json(req, msg, strlen(msg));
+}
+
+// ── Memory card: gallery, files, photos and clips
+// ─────────────────────────────────────────────────────────────────
+static int query_int(const char *qs, const char *key, int def) {
+  char v[12];
+  return httpd_query_key_value(qs, key, v, sizeof(v)) == ESP_OK ? atoi(v) : def;
+}
+
+static esp_err_t files_handler(httpd_req_t *req) {
+  if (!video_allowed(req))
+    return ESP_FAIL;
+  char qs[48] = {};
+  httpd_req_get_url_query_str(req, qs, sizeof(qs));
+  const int offset = query_int(qs, "offset", 0);
+  const int limit = query_int(qs, "limit", 48);
+  static constexpr size_t BUF = 8192; // 48 × ~60 bytes
+  char *buf = (char *)malloc(BUF);
+  if (!buf) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    return ESP_FAIL;
+  }
+  const size_t len = storage_list_json(buf, BUF, offset < 0 ? 0 : offset,
+                                       limit < 1 || limit > 100 ? 48 : limit);
+  const esp_err_t r = send_json(req, buf, len);
+  free(buf);
+  return r;
+}
+
+// Files are sent by a worker task (httpd's async handlers): a clip of
+// several MB would otherwise hold the control task — and every other route —
+// for the whole download
+static QueueHandle_t _file_q = nullptr;
+
+static bool file_name(httpd_req_t *req, char *name, size_t n, char *path,
+                      size_t pn) {
+  char qs[48] = {};
+  return httpd_req_get_url_query_str(req, qs, sizeof(qs)) == ESP_OK &&
+         httpd_query_key_value(qs, "name", name, n) == ESP_OK &&
+         storage_path(name, path, pn);
+}
+
+static void file_worker(void *) {
+  static constexpr size_t CHUNK = 8192;
+  char *buf = (char *)malloc(CHUNK);
+  for (;;) {
+    httpd_req_t *req;
+    xQueueReceive(_file_q, &req, portMAX_DELAY);
+    char name[24], path[40], qs[48] = {}, disp[64];
+    File f;
+    if (!buf || !file_name(req, name, sizeof(name), path, sizeof(path)) ||
+        !(f = storage_fs().open(path))) {
+      httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No such file");
+      httpd_req_async_handler_complete(req);
+      continue;
+    }
+    httpd_resp_set_type(req, strstr(name, ".MOV") ? "video/quicktime"
+                                                  : "image/jpeg");
+    httpd_req_get_url_query_str(req, qs, sizeof(qs));
+    if (strstr(qs, "dl=1")) {
+      snprintf(disp, sizeof(disp), "attachment; filename=\"%s\"", name);
+      httpd_resp_set_hdr(req, "Content-Disposition", disp);
+    }
+    httpd_resp_set_hdr(req, "Cache-Control", "private, max-age=86400");
+    size_t n;
+    esp_err_t r = ESP_OK;
+    while (r == ESP_OK && (n = f.read((uint8_t *)buf, CHUNK)) > 0)
+      r = httpd_resp_send_chunk(req, buf, n);
+    if (r == ESP_OK)
+      httpd_resp_send_chunk(req, nullptr, 0);
+    f.close();
+    httpd_req_async_handler_complete(req);
+  }
+}
+
+static esp_err_t file_get_handler(httpd_req_t *req) {
+  if (!video_allowed(req))
+    return ESP_FAIL;
+  char name[24], path[40];
+  if (!file_name(req, name, sizeof(name), path, sizeof(path))) {
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No such file");
+    return ESP_FAIL;
+  }
+  httpd_req_t *copy;
+  if (!_file_q || httpd_req_async_handler_begin(req, &copy) != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Busy");
+    return ESP_FAIL;
+  }
+  if (xQueueSend(_file_q, &copy, 0) != pdTRUE) {
+    httpd_resp_set_status(copy, "503 Service Unavailable");
+    httpd_resp_sendstr(copy, "Busy, try again");
+    httpd_req_async_handler_complete(copy);
+  }
+  return ESP_OK;
+}
+
+// POST /files/delete?name=IMG_00012.JPG (or name=all)
+static esp_err_t file_delete_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[48] = {}, name[24] = {};
+  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK ||
+      httpd_query_key_value(qs, "name", name, sizeof(name)) != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "name");
+    return ESP_FAIL;
+  }
+  if (!strcmp(name, "all")) {
+    storage_delete_all();
+  } else if (!storage_delete(name)) {
+    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No such file");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+static esp_err_t photo_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  if (via_hotspot(req) || !recorder_photo()) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "No memory card ready (or on the camera's own WiFi)");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+// POST /capture/record?do=start|stop
+static esp_err_t record_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[24] = {}, act[8] = {};
+  httpd_req_get_url_query_str(req, qs, sizeof(qs));
+  httpd_query_key_value(qs, "do", act, sizeof(act));
+  const bool start = !strcmp(act, "start");
+  if ((!start && strcmp(act, "stop")) || (start && via_hotspot(req)) ||
+      !recorder_record(start)) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "No memory card ready, or already recording");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+// ── Animal detection: results, model upload
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t detect_handler(httpd_req_t *req) {
+  if (!video_allowed(req))
+    return ESP_FAIL;
+  static constexpr size_t BUF = 4096; // up to 64 labels
+  char *buf = (char *)malloc(BUF);
+  if (!buf) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+    return ESP_FAIL;
+  }
+  const esp_err_t r = send_json(req, buf, detect_json(buf, BUF));
+  free(buf);
+  return r;
+}
+
+// POST /model?name=&model_len=&labels_len=&range= — body: the .tflite, then
+// the labels text. Writes flash as it arrives, like /ota.
+static esp_err_t model_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[160] = {}, name[64] = "model";
+  httpd_req_get_url_query_str(req, qs, sizeof(qs));
+  httpd_query_key_value(qs, "name", name, sizeof(name));
+  url_decode(name);
+  const int ml = query_int(qs, "model_len", 0);
+  const int ll = query_int(qs, "labels_len", 0);
+  const char *why = "Lengths don't match the upload";
+  if (ml <= 0 || ll < 0 || req->content_len != (size_t)(ml + ll) ||
+      !detect_upload_begin(name, ml, ll, query_int(qs, "range", 0), &why)) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, why);
+    return ESP_FAIL;
+  }
+  static constexpr size_t CHUNK = 4096;
+  uint8_t *buf = (uint8_t *)malloc(CHUNK);
+  size_t left = req->content_len;
+  int timeouts = 0;
+  bool ok = buf != nullptr;
+  while (ok && left) {
+    const int r = httpd_req_recv(req, (char *)buf, left < CHUNK ? left : CHUNK);
+    if (r == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3)
+      continue;
+    ok = r > 0 && detect_upload_write(buf, r);
+    if (ok)
+      left -= r;
+    timeouts = 0;
+  }
+  free(buf);
+  if (!detect_upload_end(&why) || !ok) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        ok ? why : "The upload was cut off");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+static esp_err_t model_forget_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  detect_forget();
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+// POST /system/sleep — now, if a way to wake it is set up
+static esp_err_t sleep_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  const Options &o = options();
+  if (!imu_present() || o.imu_int < 0) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "It couldn't wake up: needs the motion sensor and its "
+                        "wake wire");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  system_sleep_in(500);
+  return ESP_OK;
+}
+
 // ── Every route goes through guarded(): a request whose Host isn't the
 // camera gets the captive-portal redirect instead. That also shuts out DNS
 // rebinding (a web page whose own name is made to point at the camera).
@@ -460,6 +729,9 @@ struct Route {
 static esp_err_t guarded(httpd_req_t *req) {
   if (!host_ok(req))
     return redirect_home(req);
+  // Keeps it awake — except the status polls of a page in a background tab
+  if (!strstr(req->uri, "bg=1"))
+    power_activity();
   return static_cast<const Route *>(req->user_ctx)->fn(req);
 }
 
@@ -481,6 +753,17 @@ static const Route ROUTES[] = {
     {"/camera/reset", HTTP_POST, camera_reset_handler},
     {"/settings/reset", HTTP_POST, settings_reset_handler},
     {"/system/reboot", HTTP_POST, reboot_handler},
+    {"/system/sleep", HTTP_POST, sleep_handler},
+    {"/options", HTTP_GET, options_handler},
+    {"/options/set", HTTP_POST, options_set_handler},
+    {"/files", HTTP_GET, files_handler},
+    {"/files/get", HTTP_GET, file_get_handler},
+    {"/files/delete", HTTP_POST, file_delete_handler},
+    {"/capture/photo", HTTP_POST, photo_handler},
+    {"/capture/record", HTTP_POST, record_handler},
+    {"/detect", HTTP_GET, detect_handler},
+    {"/model", HTTP_POST, model_handler},
+    {"/model/forget", HTTP_POST, model_forget_handler},
 };
 
 // The MJPEG stream: home network and password only, like /snapshot
@@ -489,6 +772,7 @@ static esp_err_t stream_guarded(httpd_req_t *req) {
     return redirect_home(req);
   if (!video_allowed(req))
     return ESP_FAIL;
+  power_activity();
   return stream_handler(req);
 }
 
@@ -501,7 +785,7 @@ void http_start() {
   cfg.core_id = NET_CORE;
   cfg.task_priority = PRIO_HTTP_CTRL;
   cfg.stack_size = 8192; // default 4096 is too small for OTA + JSON buffers
-  cfg.max_uri_handlers = 24;
+  cfg.max_uri_handlers = 32;
   cfg.max_open_sockets = 6;
   cfg.lru_purge_enable = true; // drop oldest idle socket if limit is reached
   cfg.recv_wait_timeout = 30;  // seconds — OTA uploads can be large
@@ -525,6 +809,9 @@ void http_start() {
     server = nullptr;
     return;
   }
+  _file_q = xQueueCreate(8, sizeof(httpd_req_t *));
+  xTaskCreatePinnedToCore(file_worker, "files", 4096, nullptr, PRIO_HTTP_STREAM,
+                          nullptr, NET_CORE);
   for (const Route &r : ROUTES) {
     const httpd_uri_t u = {r.uri, r.method, guarded, (void *)&r};
     httpd_register_uri_handler(server, &u);

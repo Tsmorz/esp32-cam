@@ -30,3 +30,12 @@ float imu_mag_cal_progress(); // 0…1 while calibrating
 bool imu_mag_cal_finish();
 void imu_mag_cal_cancel();
 void imu_mag_cal_clear();
+
+// ── Motion and wake ──────────────────────────────────────────────────────────
+bool imu_present();
+// The camera was moved or bumped since the last call (options().motion_sens)
+bool imu_motion_take();
+// Before deep sleep: stops the task, gyro and compass off, accelerometer in
+// low-power mode raising INT1 on movement (sens 1–3). The wire from INT1 to
+// options().imu_int is what wakes the board.
+bool imu_prepare_wake(int sens);

@@ -218,5 +218,9 @@ bool settings_reset(const char *scope) {
     clear_ns(settings::IMU);
     known = true;
   }
+  if (all || !strcmp(scope, "options")) {
+    clear_ns(settings::OPTIONS);
+    known = true;
+  }
   return known;
 }

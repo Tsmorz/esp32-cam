@@ -33,10 +33,11 @@ Everything on screen is in plain words — "password", "software update", "motio
 | Page | What's there |
 |------|--------------|
 | **Setup** | Opens by itself on a new camera, or one reached over its own WiFi that isn't on a home network yet: password → home WiFi → the address to use from now on. Settings → *Start setup* runs it again |
-| **Live** | The video, as large as the window allows, with its size, focus state, the direction it faces, focus, photo and full screen. With the motion sensor: a compass, side and front tilt, and compass calibration (turn the camera in every direction; it finishes by itself) |
+| **Live** | The video, as large as the window allows, with its size, focus state, the direction it faces, focus, photo (to this device), save and record (to the memory card), full screen, and what the animal model sees (names, or marks where). With the motion sensor: a compass, side and front tilt, and compass calibration (turn the camera in every direction; it finishes by itself) |
 | **Picture** | Size and quality (presets), focus, mirror / upside down, light, color, look. Applied instantly and **kept across restarts** |
+| **Photos** | What's on the memory card: a gallery (clips play in the page), download, delete; take a photo or record; automatic photos and clips — timelapse, when the camera is moved, when an animal is seen |
 | **WiFi** | Home WiFi with signal and the addresses to open, the camera's own WiFi (on/off), find and connect to a network, forget it |
-| **Settings** | Version, temperature, motion sensor; software update; password; set up again, restart, reset (picture, WiFi, compass, password, everything) |
+| **Settings** | Version, temperature, motion sensor; animal detection (model upload, on/off, how sure, which animals); sleep; software update; password; set up again, restart, reset (picture, WiFi, compass, add-on settings, password, everything). *Advanced details* has the add-ons' wiring (which GPIO each wire goes to) |
 
 The page lives in `web/index.html`; `scripts/embed_web.py` gzips it into the firmware at build time (~25 KB). No external assets or web fonts, so it works on the hotspot without internet. Light and dark follow the OS until the header toggle picks one (remembered in the browser).
 
@@ -50,7 +51,7 @@ What it does for you:
 
 | Pattern | Meaning |
 |---------|---------|
-| Short blip every 2 s | Running |
+| On | Running |
 | Fast blink | Booting |
 | Slow blink | Joining WiFi |
 | Double blink | Camera failed to start (dashboard and OTA still work) |
@@ -88,8 +89,19 @@ Control server, port **80**:
 | `POST /ota` 🔒 | Raw `firmware.bin`; reboots on success. Refused while the last update is still on probation (`ota_pending`) |
 | `POST /camera/reset` 🔒 | Forget saved camera settings and reboot |
 | `POST /imu/compass?do=` 🔒 | `start` a compass calibration, `finish` it (400 until enough rotation was seen), `cancel`, or `clear` the stored one |
-| `POST /settings/reset?scope=` 🔒 | `all`, `camera`, `wifi`, `imu` (compass calibration) or `token`: forget those saved settings and reboot |
+| `POST /settings/reset?scope=` 🔒 | `all`, `camera`, `wifi`, `imu` (compass calibration), `options` (add-ons, automation, sleep, detection) or `token`: forget those saved settings and reboot |
 | `POST /system/reboot` 🔒 | Reboot |
+| `POST /system/sleep` 🔒 | Deep sleep now (only with the motion sensor's wake wire set) |
+| `GET /options` | Wiring, automation, sleep and detection settings, plus the GPIOs offered for wiring |
+| `POST /options/set?key=&val=` 🔒 | Change one (`val` URL-encoded); `{"restart":true}` for wiring, which applies after a restart |
+| `GET /files[?offset=&limit=]` 🎥 | The memory card's photos and clips, newest first: `{"total","files":[{"name","size","time"}]}` |
+| `GET /files/get?name=[&dl=1]` 🎥 | One file (JPEG or QuickTime); `dl=1` = as a download. Sent by a worker task, so other routes keep answering |
+| `POST /files/delete?name=` 🔒 | Delete one, or `name=all` |
+| `POST /capture/photo` 🔒 | Save a photo on the card |
+| `POST /capture/record?do=start\|stop` 🔒 | Record a clip (stops by itself after `rec_max_min`) |
+| `GET /detect` 🎥 | Model, input, speed, labels and the latest results (`label`, `score`, `x`/`y` 0–1 or −1 for the whole picture) |
+| `POST /model?name=&model_len=&labels_len=&range=` 🔒 | Upload a model: body = the `.tflite`, then the labels text. `range`: 0 = pixels 0..1, 1 = −1..1, 2 = 0..255 |
+| `POST /model/forget` 🔒 | Remove the model |
 
 Stream server, port **81**: `GET /stream` 🎥 — MJPEG, one viewer at a time (the next one waits until it's free).
 
@@ -110,7 +122,10 @@ curl -H "X-Token: $TOKEN" -H "Content-Type: application/octet-stream" \
 | 0 | WiFi / lwIP / esp_timer / camera DMA | 23 / 18 / 22 / SDK | SDK-pinned radio + capture |
 | 0 | httpd control (:80) | 6 | Dashboard, JSON, settings, OTA |
 | 0 | httpd stream (:81) | 5 | MJPEG |
-| 1 | `imu` | 10 | 52 Hz sampling + VQF (only with the IMU board) |
+| 0 | `files` | 5 | Sends gallery files (async httpd requests) |
+| 1 | `imu` | 10 | 52 Hz sampling + VQF, motion detection (only with the IMU board) |
+| 1 | `rec` | 3 | Memory card: photos, clips, timelapse, triggers (only with a card wired) |
+| 1 | `detect` | 1 | Animal detection, ~once a second (takes turns with `loop()`) |
 | 1 | `led` | 1 | Status LED |
 | 1 | Arduino `loop()` | 1 | Serial commands, autofocus, housekeeping |
 
@@ -123,6 +138,34 @@ Everything the board remembers (camera settings, WiFi network, compass calibrati
 **Passwords are encrypted at rest** (`src/secret_store.cpp`): the API token and the home WiFi password are AES-256-GCM blobs in NVS. The key comes from the chip's HMAC peripheral: on first boot the firmware burns a random 256-bit key into a free **eFuse key block** (purpose `HMAC_UP`, read-protected — software can use it but never read it back). This is **permanent** and uses one of the chip's six key blocks; a dump of the flash alone no longer reveals the passwords. If no block is free, the key is derived from the MAC address instead, which only obscures them (`/status.secrets` = `firmware`, Settings → Advanced details). IDF's built-in NVS encryption isn't used: Arduino mounts NVS unencrypted before `setup()`, and a new partition table can't be installed over the air. On the first boot of schema 3 the plain-text passwords are encrypted and the NVS partition is rewritten (erase + copy back), because NVS leaves deleted values in flash; the WiFi driver's own store (`nvs.net80211`) is dropped too. A power cut during that one-time step loses the saved settings. Passwords compiled in from `secrets.h` are still in the firmware image itself.
 
 A firmware update over WiFi boots **on probation**: it is confirmed 20 s after `setup()` finished, once the HTTP servers run and the camera is on a network (home WiFi or its hotspot). If it resets before that (a crash, a boot loop), the bootloader goes back to the previous image on its own; if it never gets healthy, it rolls itself back after 2 minutes. A power cycle during probation counts as a failure too, so let a fresh update run for half a minute. `/status` shows `ota_pending` (and `ota_confirm_s`) while on probation, and `rolled_back` after a failed one.
+
+## Memory card (optional)
+
+Photos and clips go to a memory card on SPI — e.g. **Adafruit's SPI Flash SD Card (XTSD 512 MB)**, SD-NAND that behaves like a microSD card. Wire SCK, MISO, MOSI and CS to free GPIOs (9–18, 38, 47; check which your board brings out) plus 3V and GND, then pick those pins under Settings → *Advanced details* and restart. A new card is formatted (FAT) by itself.
+
+- Files: `/WCAM/IMG_00001.JPG` and `/WCAM/VID_00002.MOV`, one numbering. Times come from the internet clock once on the home network (SNTP, UTC)
+- Clips are **QuickTime Motion-JPEG** (`src/mov_writer.h`, host-tested): they play in QuickTime on a Mac or iPhone and in VLC, and the dashboard plays them by itself. 512 MB holds roughly 10,000 photos at 800×600, or ~50 min of 320×240 video
+- Automatic: a **timelapse** (every 1–60 min), a photo or clip **when the camera is moved**, or **when an animal is seen**. After an automatic one, triggers wait 30 s
+- While recording, the stream gets about half the frames (both take them from the camera). Not encrypted (the user's choice); photos are private through the web server only
+
+## Animal detection (optional)
+
+Upload a **TensorFlow Lite** model (`.tflite`) and its labels (`.txt`, one per line) under Settings → *Animal detection* — for example one trained and exported in Edge Impulse. It runs on the camera with TensorFlow Lite Micro and Espressif's esp-nn kernels; nothing leaves the board.
+
+- Two kinds: a classifier (output `[N]`: what the whole picture shows) or a **FOMO** grid (output `[gh][gw][N]`, class 0 = background: also where — marks on the live video). int8, uint8 or float; gray or RGB input, any size
+- Stored in the flash partition the firmware doesn't otherwise use (`spiffs`, up to 3.3 MB; header written last, so a cut-off upload leaves no model), copied to PSRAM, working memory found by trial (256 KB – 3 MB)
+- Each look: the newest frame decoded at 1/2–1/8 size, centre-cropped to the model's shape, quantized (`src/detect_post.h`, host-tested). *Picture values* must match training: 0..1 (Edge Impulse), −1..1 (MobileNet) or 0..255
+- Labels such as `background`, `none`, `unknown` or `no …` mean "nothing seen": never shown, never a trigger. *Only these animals* limits triggers to the names listed
+- Measured on this board with TensorFlow's 96×96 person-detection model (a stand-in of the same size class): 133 ms per look including the JPEG decode
+
+## Sleep (optional)
+
+With the motion sensor and a wire from its **INT1** pin to an RTC-capable GPIO (9–18, set under *Advanced details*), the camera can **deep sleep** after 5–60 idle minutes (Settings → *Sleep*), or at once (*Sleep now*). Moving it wakes it: the LSM6DSOX stays on in low-power mode (26 Hz, gyro and compass off) and raises INT1 above the chosen movement threshold. Waking is a full start (~5 s to video). Before sleeping, the camera's power rails are switched off through the AXP313A.
+
+- It stays awake while someone watches, records, is on the hotspot, or during an update's probation. A dashboard tab in the background doesn't keep it awake
+- With a timelapse on, a timer wakes it for each photo, which it takes without WiFi before sleeping again
+- The gyro bias is kept across sleep (RTC memory): after a wake by motion the board isn't still
+- Not possible without the wake wire: nothing else could wake it (BOOT/RST and a power cycle always work)
 
 ## Motion sensor (optional)
 
@@ -146,15 +189,22 @@ src/
   token_rules.h       What a valid token looks like (host-tested)
   secret_store.h/cpp  Passwords encrypted at rest (eFuse HMAC key, AES-GCM)
   build_info.h/cpp    Version + build time, the one file rebuilt every build
-  imu.h/cpp           LSM6DSOX + LIS3MDL driver, VQF sampling task, compass calibration
+  imu.h/cpp           LSM6DSOX + LIS3MDL driver, VQF sampling task, compass calibration, motion + wake-up
+  options.h/cpp       Wiring, automation, sleep and detection settings (dashboard-editable)
+  storage.h/cpp       Memory card on SPI: files, gallery index
+  recorder.h/cpp      Photos, clips, timelapse, triggers (own task)
+  mov_writer.h        QuickTime Motion-JPEG writer (host-tested)
+  detect.h/cpp        Model storage + TensorFlow Lite Micro task
+  detect_post.h       Picture → model input, output → detections (host-tested)
+  power.h/cpp         Deep sleep and wake
   mag_cal.h           Compass calibration maths (host-tested)
-  strbuf.h            appendf / json_esc
+  strbuf.h            appendf / json_esc / json_str / url_decode (host-tested)
   settings.h/cpp      NVS namespaces, schema version, reset
   camera.h/cpp        Camera init, settings + persistence, MJPEG handler
   camera_profile.h/cpp  Stream size, viewers, the sensor lock
   focus.h/cpp         OV5640 autofocus firmware upload and control
   led.h/cpp           Status LED task
-  system.h/cpp        Deferred restart
+  system.h/cpp        Deferred restart or sleep
   board.h/cpp         I²C bus + AXP313A power
   wifi_mgr.h/cpp      AP+STA, saved network, mDNS, async scan, captive-portal DNS
   http_server.h/cpp   Both HTTP servers: every route
@@ -179,7 +229,7 @@ lib/
 | `task format` | clang-format everything | — |
 | `task format-check` | Fail on unformatted sources | Format |
 | `task check` | cppcheck; fails on high/medium findings | Static analysis |
-| `task test` | Unit tests on your computer (token rules, JSON helpers, VQF with magnetometer, compass calibration) — no board | Unit tests |
+| `task test` | Unit tests on your computer (token rules, JSON helpers, VQF with magnetometer, compass calibration, clip writer, detection maths) — no board | Unit tests |
 | `task build` | Compile the firmware | Build firmware |
 | `task ci` | All four, in that order | — |
 | `task smoke` | Check the running board over the network: routes, token, POST-only, no CORS, Host check, video access rules, snapshot (`-- -H <ip> --token <t>` for options) | — |
@@ -187,19 +237,31 @@ lib/
 
 `.github/workflows/ci.yml` runs Format, Static analysis, Unit tests and Build in parallel on every push and pull request, each by calling the same `task` command. Build uploads `firmware.bin` and `firmware.factory.bin` as a workflow artifact and writes the RAM/flash usage to the run summary.
 
-**Releasing:** push a version tag.
+**Releasing is automatic:** every merge (or push) to `main` gets the next version, once all four checks pass — the Tag job creates the tag and the Release job publishes it in the same run. By default the patch number goes up (`v1.4.0` → `v1.4.1`); put **`#minor`** or **`#major`** in the pull request's title (it lands in the merge commit) or in any commit message since the last release to bump that instead (`v1.5.0`, `v2.0.0`). `scripts/next_version.sh` decides; try it locally:
 
 ```bash
-git tag v1.1.0 && git push origin v1.1.0
+GITHUB_REF=refs/heads/main GITHUB_EVENT_NAME=push scripts/next_version.sh   # tag=v1.4.1
 ```
 
-When all four jobs pass, the Release job publishes a GitHub release with notes generated from the commits and three assets:
+The firmware is built with that version already (`FW_VERSION`), so the released binary reports `v1.4.1`. A commit on `main` that already carries a `v*` tag isn't tagged again.
+
+**Development builds:** every push to `development` (after the same checks) updates one rolling pre-release, **`dev`**: its tag moves to the new commit and its files are replaced, so the links stay the same — handy to share a test build:
+
+- `…/releases/download/dev/<repo>-dev.bin` (update file) and `<repo>-dev-factory.bin`, plus `SHA256SUMS`
+- the firmware reports the version it leads up to, e.g. `v1.4.1-dev.3+3da6968` (3 commits since `v1.4.0`, at commit `3da6968`)
+- it is never marked as the latest release, and release notes of real releases start at the previous real one (`--notes-start-tag`), not at `dev` To release by hand — a pre-release, or from another branch — push a tag as before:
+
+```bash
+git tag v1.5.0-rc1 && git push origin v1.5.0-rc1
+```
+
+The Release job publishes a GitHub release with notes generated from the commits and three assets:
 
 - `<repo>-v1.1.0.bin` — for the dashboard's firmware upload or `curl … /ota`
 - `<repo>-v1.1.0-factory.bin` — bootloader, partition table and app in one, for a blank board: `esptool.py --chip esp32s3 write_flash 0x0 <file>`
 - `SHA256SUMS`
 
-Tags with a hyphen (`v1.1.0-rc1`) become pre-releases. The firmware reports its version (`git describe`, e.g. `v1.1.0` or `v1.1.0-3-gabc1234-dirty`) in `/status` and on the System page.
+Tags with a hyphen (`v1.1.0-rc1`) become pre-releases. The firmware reports its version (`git describe`, e.g. `v1.1.0` or `v1.1.0-3-gabc1234-dirty`, or the one CI set) in `/status` and on the Settings page.
 
 ## V1.0 vs V1.1
 

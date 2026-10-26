@@ -285,6 +285,26 @@ a.btn{color:var(--text);text-decoration:none}
 .addr a{color:var(--text);text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis}
 .big-ok{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--ok-soft);color:var(--ok);margin-bottom:12px}
 .big-ok svg.i{width:26px;height:26px}
+/* Photos: gallery tiles, viewer; detection marks over the video */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px;margin-top:8px}
+.gallery button{position:relative;aspect-ratio:4/3;padding:0;border:1px solid var(--border);border-radius:4px;background:#000;overflow:hidden;cursor:pointer;color:#eceded}
+.gallery button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.gallery img{width:100%;height:100%;object-fit:cover;display:block}
+.gallery .play{position:absolute;inset:0;display:grid;place-items:center}
+.gallery .play svg{width:30px;height:30px;color:#eceded}
+.gallery .tag{position:absolute;left:5px;bottom:5px;font:500 10.5px var(--mono);background:rgba(0,0,0,.65);padding:1px 5px;border-radius:3px}
+dialog.viewer{width:min(960px,calc(100vw - 32px))}
+.vwrap{background:#000;display:grid;place-items:center;aspect-ratio:4/3;max-height:70vh;border-radius:8px 8px 0 0;overflow:hidden}
+.vwrap img{max-width:100%;max-height:70vh;object-fit:contain}
+dialog.viewer .actions{padding:12px 16px;margin:0;align-items:center;flex-wrap:wrap}
+.dets{position:absolute;inset:0;pointer-events:none;z-index:1}
+.dets i{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid #ff3d8b;box-shadow:0 0 0 2px rgba(0,0,0,.45)}
+.dets span{position:absolute;transform:translate(-50%,-170%);font:600 11px var(--mono);color:#fff;background:rgba(0,0,0,.65);padding:1px 6px;border-radius:3px;white-space:nowrap}
+.pill.rec{color:#ff3d8b}
+.chips.wrap{flex-wrap:wrap;margin:6px 0 2px}
+.chips.wrap .badge{cursor:pointer}
+input[type=text].opt{width:170px;height:30px;padding:0 8px;border-radius:var(--radius-sm);border:1px solid var(--border-strong);background:var(--surface-2)}
+input[type=file]{font-size:12.5px;max-width:210px}
 details.adv{margin-top:14px}
 details.adv summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
 details.adv[open] summary{margin-bottom:8px}
@@ -360,6 +380,10 @@ dialog code{overflow-wrap:anywhere}
   <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2.2 4.8-4.8 2.2 2.2-4.8Z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-gallery" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="m3.5 16 5-5 4 4 3-3 5 5"/><circle cx="15.5" cy="9" r="1.5"/></symbol>
+  <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5Z" fill="currentColor"/></symbol>
+  <symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.5"/><circle cx="5.8" cy="10.5" r="1.8"/><circle cx="9.5" cy="6.5" r="1.8"/><circle cx="14.5" cy="6.5" r="1.8"/><circle cx="18.2" cy="10.5" r="1.8"/></symbol>
   <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></symbol>
 </svg>
 
@@ -372,6 +396,7 @@ dialog code{overflow-wrap:anywhere}
     <nav class="tabs" aria-label="Pages">
       <a href="#live" data-page="live"><svg class="i"><use href="#i-live"/></svg>Live</a>
       <a href="#camera" data-page="camera"><svg class="i"><use href="#i-sliders"/></svg>Picture</a>
+      <a href="#photos" data-page="photos"><svg class="i"><use href="#i-gallery"/></svg>Photos</a>
       <a href="#network" data-page="network"><svg class="i"><use href="#i-wifi"/></svg>WiFi</a>
       <a href="#system" data-page="system"><svg class="i"><use href="#i-gear"/></svg>Settings</a>
     </nav>
@@ -432,17 +457,22 @@ dialog code{overflow-wrap:anywhere}
   <div class="live" id="live">
     <div class="video" id="video">
       <img id="cam" alt="Live view from the camera">
+      <div class="dets" id="detDots"></div>
       <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b id="camEmptyT">Starting the video…</b><span id="camEmptyS"></span><button class="btn sm" type="button" id="camEmptyBtn" hidden></button></div>
       <div class="vbar top">
         <span class="pill" id="resPill" title="Picture size">—</span>
         <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
+        <span class="pill rec" id="recPill" hidden title="Recording to the memory card"><svg class="i"><use href="#i-rec"/></svg><span id="recPillText">REC</span></span>
+        <span class="chips" id="detChips"></span>
         <span class="spacer"></span>
         <span class="pill" id="headPill" hidden title="Direction the camera faces"><svg class="i" style="width:15px;height:15px"><use href="#i-compass"/></svg><span id="headPillText"></span></span>
       </div>
       <div class="vbar bottom">
         <span class="spacer"></span>
         <button class="pill btn" id="btnFocus" hidden aria-label="Focus now" title="Focus now"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg><span class="pl">Focus</span></button>
-        <button class="pill btn" id="btnShot" aria-label="Take a photo" title="Save a photo"><svg class="i" style="width:16px;height:16px"><use href="#i-shot"/></svg><span class="pl">Photo</span></button>
+        <button class="pill btn" id="btnRecLive" hidden aria-pressed="false" title="Record a clip on the camera's memory card"><svg class="i" style="width:16px;height:16px"><use href="#i-rec"/></svg><span class="pl" id="recLiveText">Record</span></button>
+        <button class="pill btn" id="btnSaveLive" hidden title="Save a photo on the camera's memory card"><svg class="i" style="width:16px;height:16px"><use href="#i-gallery"/></svg><span class="pl">Save</span></button>
+        <button class="pill btn" id="btnShot" aria-label="Take a photo" title="Download a photo to this device"><svg class="i" style="width:16px;height:16px"><use href="#i-shot"/></svg><span class="pl">Photo</span></button>
         <button class="pill btn" id="btnFull" title="Full screen" aria-label="Full screen"><svg class="i" style="width:16px;height:16px"><use href="#i-full"/></svg></button>
       </div>
     </div>
@@ -583,6 +613,48 @@ dialog code{overflow-wrap:anywhere}
   </div>
 </section>
 
+<!-- ═══ PHOTOS ═══════════════════════════════════════ -->
+<section class="page" id="page-photos">
+  <div class="page-head">
+    <div><h1>Photos</h1><p>Saved on the camera's memory card. Shown only on your home WiFi, with the password.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="btnSavePhoto"><svg class="i"><use href="#i-shot"/></svg>Take a photo</button><button class="btn" id="btnRec"><svg class="i"><use href="#i-rec"/></svg><span id="btnRecText">Record</span></button></div>
+  </div>
+  <div class="grid2">
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h2>Saved</h2><span class="sub" id="galCount"></span></div>
+        <div class="card-b">
+          <div class="empty" id="galEmpty"><svg class="i"><use href="#i-gallery"/></svg><b id="galEmptyT">Nothing saved yet</b><span id="galEmptyS"></span></div>
+          <div class="gallery" id="gallery"></div>
+          <p style="text-align:center;margin:12px 0 0"><button class="btn sm" id="galMore" hidden>Show more</button></p>
+        </div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-h"><h2>Memory card</h2><span class="sub" id="sdBadge"></span></div>
+        <div class="card-b">
+          <p id="sdText" class="muted" style="font-size:13px;margin:8px 0"></p>
+          <div id="sdMeterRow"><div style="display:flex;justify-content:space-between;font-size:12px" class="muted"><span>Used</span><span class="num" id="sdUsed">—</span></div><div class="meter"><i id="sdBar" style="width:0"></i></div></div>
+          <div class="row" id="sdDeleteRow" style="margin-top:8px"><span class="lbl">Delete everything<small>All photos and clips on the card</small></span><button class="btn sm danger" id="btnDelAll">Delete all</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Automatic</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="o-timelapse_min">Timelapse<small>A photo at regular times</small></label><select id="o-timelapse_min" data-opt="timelapse_min"><option value="0">Off</option><option value="1">Every minute</option><option value="5">Every 5 minutes</option><option value="15">Every 15 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every hour</option></select></div>
+          <div class="row" id="rowMotion"><label for="o-motion_action">When the camera is moved<small>Bumped, picked up or turned</small></label><select id="o-motion_action" data-opt="motion_action"><option value="0">Nothing</option><option value="1">Take a photo</option><option value="2">Record a clip</option></select></div>
+          <div class="row" id="rowMotionSens"><label for="o-motion_sens">How much movement<small>Also what wakes it from sleep</small></label><select id="o-motion_sens" data-opt="motion_sens"><option value="1">A clear bump</option><option value="2">Normal</option><option value="3">The slightest touch</option></select></div>
+          <div class="row" id="rowDetectAct"><label for="o-detect_action">When an animal is seen<small>Set up under Settings → Animal detection</small></label><select id="o-detect_action" data-opt="detect_action"><option value="0">Nothing</option><option value="1">Take a photo</option><option value="2">Record a clip</option></select></div>
+          <div class="row"><label for="o-clip_s">Automatic clips<small>How long each one is</small></label><select id="o-clip_s" data-opt="clip_s"><option value="5">5 seconds</option><option value="10">10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option></select></div>
+          <div class="row"><label for="o-rec_max_min">Recording by hand<small>Stops by itself after</small></label><select id="o-rec_max_min" data-opt="rec_max_min"><option value="1">1 minute</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="30">30 minutes</option></select></div>
+          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>After an automatic photo or clip, the camera waits 30 seconds before the next one. While it records, the live video is less smooth.</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══ SETTINGS ═══════════════════════════════════════ -->
 <section class="page" id="page-system">
   <div class="page-head"><div><h1>Settings</h1><p>Updates, password and help when something isn't right.</p></div></div>
@@ -612,6 +684,13 @@ dialog code{overflow-wrap:anywhere}
               <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>Internal RAM free</span><span class="num" id="sHeap">—</span></div><div class="meter"><i id="sHeapBar" style="width:0"></i></div></div>
               <div><div class="muted" style="font-size:12px;display:flex;justify-content:space-between"><span>PSRAM free</span><span class="num" id="sPsram">—</span></div><div class="meter"><i id="sPsramBar" style="width:0"></i></div></div>
             </div>
+            <h3 style="font-size:13px;margin:18px 0 2px">Add-ons wiring</h3>
+            <p class="muted" style="font-size:12px;margin:0 0 4px">Which pins the extra boards are connected to. Changes apply after a restart.</p>
+            <div class="row"><label for="o-sd_sck">Memory card SCK<small>Clock</small></label><select class="pinsel" id="o-sd_sck" data-opt="sd_sck"></select></div>
+            <div class="row"><label for="o-sd_miso">Memory card MISO<small>Card → camera (SO)</small></label><select class="pinsel" id="o-sd_miso" data-opt="sd_miso"></select></div>
+            <div class="row"><label for="o-sd_mosi">Memory card MOSI<small>Camera → card (SI)</small></label><select class="pinsel" id="o-sd_mosi" data-opt="sd_mosi"></select></div>
+            <div class="row"><label for="o-sd_cs">Memory card CS<small>Chip select</small></label><select class="pinsel" id="o-sd_cs" data-opt="sd_cs"></select></div>
+            <div class="row"><label for="o-imu_int">Motion sensor INT1<small>Wakes the camera from sleep</small></label><select class="pinsel wake" id="o-imu_int" data-opt="imu_int"></select></div>
             <p style="margin:12px 0 0"><a class="btn sm" href="/status" target="_blank">Status (JSON)</a></p>
           </details>
         </div>
@@ -624,12 +703,39 @@ dialog code{overflow-wrap:anywhere}
           <div class="row"><span class="lbl">Restart the camera<small>Takes about ten seconds</small></span>
             <button class="btn sm" id="btnReboot"><svg class="i"><use href="#i-power"/></svg>Restart</button></div>
           <div class="row"><label for="resetScope">Reset<small>Back to how it came, then restart</small></label>
-            <select id="resetScope"><option value="camera">Picture settings</option><option value="wifi">WiFi network</option><option value="imu">Compass calibration</option><option value="token">Password</option><option value="all">Everything (factory reset)</option></select>
+            <select id="resetScope"><option value="camera">Picture settings</option><option value="wifi">WiFi network</option><option value="imu">Compass calibration</option><option value="options">Photos, sleep and detection settings</option><option value="token">Password</option><option value="all">Everything (factory reset)</option></select>
             <button class="btn sm danger" id="btnResetScope">Reset</button></div>
         </div>
       </div>
     </div>
     <div class="stack">
+      <div class="card" id="detCard">
+        <div class="card-h"><h2>Animal detection</h2><span class="sub" id="detBadge"></span></div>
+        <div class="card-b">
+          <p class="muted" id="detText" style="font-size:13px;margin:8px 0"></p>
+          <div class="row"><label for="o-detect_on">Look for animals<small>About once a second</small></label><span class="sw"><input type="checkbox" id="o-detect_on" data-opt="detect_on"></span></div>
+          <div class="row"><label for="o-detect_thr">How sure it must be<small>Less sure than this doesn't count</small></label><input type="range" id="o-detect_thr" data-opt="detect_thr" min="10" max="95" step="5"><span class="val" data-for="o-detect_thr"></span></div>
+          <div class="row"><label for="o-detect_only">Only these animals<small>Names the model knows, separated by commas. Empty: any</small></label><input type="text" class="opt" id="o-detect_only" data-opt="detect_only" placeholder="Any" maxlength="95"></div>
+          <div class="chips wrap" id="detLabels"></div>
+          <details class="adv" id="modelBox">
+            <summary>Upload a model</summary>
+            <p class="hint" style="margin-top:4px"><svg class="i"><use href="#i-info"/></svg><span>A TensorFlow Lite model (<span class="num">.tflite</span>) and its labels (<span class="num">.txt</span>, one name per line), for example exported from Edge Impulse — one that names what's in the picture, or a FOMO model that also shows where. Up to 3.3 MB; it replaces the current one.</span></p>
+            <div class="row"><label for="mFile">Model<small>.tflite</small></label><input type="file" id="mFile" accept=".tflite,.lite"></div>
+            <div class="row"><label for="lFile">Labels<small>.txt</small></label><input type="file" id="lFile" accept=".txt,.labels"></div>
+            <div class="row"><label for="mRange">Picture values<small>As the model was trained</small></label><select id="mRange"><option value="0">0 to 1 (Edge Impulse)</option><option value="1">−1 to 1 (MobileNet)</option><option value="2">0 to 255</option></select></div>
+            <div id="mProg" hidden style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px"><span id="mText">Sending…</span><span class="num" id="mPct"></span></div><div class="meter"><i id="mBar" style="width:0"></i></div></div>
+            <p style="display:flex;gap:8px;margin:12px 0 0"><button class="btn sm primary" id="btnModelUp" type="button">Upload</button><button class="btn sm danger" id="btnModelDel" type="button">Remove the model</button></p>
+          </details>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Sleep</h2></div>
+        <div class="card-b">
+          <div class="row"><label for="o-sleep_min">Sleep when not in use<small id="sleepHint">—</small></label><select id="o-sleep_min" data-opt="sleep_min"><option value="0">Never</option><option value="5">After 5 minutes</option><option value="15">After 15 minutes</option><option value="30">After 30 minutes</option><option value="60">After an hour</option></select></div>
+          <div class="row"><span class="lbl">Sleep now<small>Move the camera to wake it</small></span><button class="btn sm" id="btnSleep" type="button">Sleep</button></div>
+          <p class="hint"><svg class="i"><use href="#i-info"/></svg><span>Asleep, the camera uses little power but can't be reached. Moving it wakes it in about five seconds. A timelapse keeps taking photos. Needs the motion sensor with its wake wire.</span></p>
+        </div>
+      </div>
       <div class="card">
         <div class="card-h"><h2>Software update</h2></div>
         <div class="card-b">
@@ -670,6 +776,10 @@ dialog code{overflow-wrap:anywhere}
     <p id="askText"></p>
     <div class="actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" id="askOk" value="ok">OK</button></div>
   </form>
+</dialog>
+<dialog id="viewDlg" class="viewer">
+  <div class="vwrap"><img id="viewImg" alt="Saved photo"></div>
+  <div class="actions"><span class="muted num" id="viewInfo" style="margin-right:auto;font-size:12px"></span><a class="btn sm" id="viewDl">Download</a><button class="btn sm danger" id="viewDel" type="button">Delete</button><button class="btn sm" id="viewClose" type="button">Close</button></div>
 </dialog>
 <div id="toasts" role="status" aria-live="polite"></div>
 
@@ -788,10 +898,11 @@ function startLive() {
   if (!liveShown()) return;
   loop('stream', checkStream, 2000);
   if (imuOn() && canWatch()) loop('pose', pollPose, 100);
+  if (canWatch() && S?.detect?.state === 'running') loop('detect', pollDetectLive, 1000);
 }
 
 // ── Pages ─────────────────────────────────────────────
-const pages = ['setup', 'live', 'camera', 'network', 'system'];
+const pages = ['setup', 'live', 'camera', 'photos', 'network', 'system'];
 let page = null;
 function route() {
   const next = pages.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'live';
@@ -802,6 +913,8 @@ function route() {
   setStream(liveShown());
   if (page === 'camera') loadCamera();
   if (page === 'setup') setupEnter();
+  // The gallery and detection details follow the status (renderStorage)
+  if (page === 'photos' || page === 'system') { loadOptions(); galKey = detKey = ''; if (S) renderStorage(); }
   startLive();
 }
 addEventListener('hashchange', route);
@@ -827,7 +940,7 @@ matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', renderT
 let S = null, online = false, fails = 0, lastOk = 0, statusTimer = 0, firstStatus = true, polling = false;
 // R: a restart this page started (restart, reset, update) and is waiting
 // for the camera to come back from. notice: a result shown until dismissed.
-let R = null, notice = null;
+let R = null, notice = null, sleeping = false;
 const signal = rssi => rssi >= -55 ? [4, 'Strong'] : rssi >= -67 ? [3, 'Good'] : rssi >= -75 ? [2, 'Fair'] : [1, 'Weak'];
 const bars = rssi => { const n = signal(rssi)[0];
   return '<span class="bars">' + [1,2,3,4].map(i => `<i class="${i <= n ? 'on' : ''}"></i>`).join('') + '</span>'; };
@@ -852,9 +965,10 @@ async function pollStatus() {
   if (polling) return;
   polling = true;
   try {
-    const s = await getJSON('/status', R ? 2500 : 4000);
+    // A page in a background tab doesn't keep the camera from sleeping
+    const s = await getJSON('/status' + (document.hidden ? '?bg=1' : ''), R ? 2500 : 4000);
     const back = !online && lastOk;
-    S = s; fails = 0; lastOk = Date.now();
+    S = s; fails = 0; lastOk = Date.now(); sleeping = false;
     setOnline(true);
     if (R) trackRestart(s);
     renderStatus();
@@ -916,12 +1030,14 @@ function renderBanner() {
     else
       b = {kind: 'info', icon: 'refresh', spin: true, title: R.kind === 'ota' ? 'Installing the update…' : 'Restarting…', text: 'This takes a few seconds. The page reconnects by itself' + (hot ? ` — if this device leaves ${apName()} meanwhile, join it again.` : '.')};
     if (R.kind === 'ota') $('#otaText').textContent = b.title;
+  } else if (!online && sleeping) {
+    b = {kind: 'info', icon: 'moon', title: 'The camera is asleep', text: 'Move it to wake it up. This page reconnects by itself.'};
   } else if (!online && fails >= 2) {
     const since = lastOk ? `Showing what it last sent, at ${new Date(lastOk).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}. ` : '';
     b = {kind: 'bad', icon: 'alert', title: "Can't reach the camera",
       text: since + (joining && !hot ? `It's moving to ${joining.ssid}. If it gets there, connect this device to ${joining.ssid} and open http://${host()}. If it can't, it comes back to this network within a minute.`
         : hot ? `Check it has power, and that this device is still connected to ${apName()}. Trying again…`
-        : 'Check it has power and that this device is on the same WiFi. Trying again…')};
+        : (S?.power?.blocker === '' ? 'It may be asleep: move it to wake it. ' : '') + 'Check it has power and that this device is on the same WiFi. Trying again…')};
   } else if (notice) {
     b = notice;
   } else if (S?.ota_pending) {
@@ -1003,6 +1119,8 @@ function renderStatus() {
   $('#live').classList.toggle('side', motion);
   if (!motion) $('#headPill').hidden = true;
   if (videoReady === null && !hot) ensureVideo();
+  renderStorage();
+  if (!(canWatch() && S.detect?.state === 'running')) { $('#detChips').innerHTML = ''; $('#detDots').innerHTML = ''; }
   startLive();
   if (!streamPort) { streamPort = S.stream_port; setStream(liveShown()); }
 }
@@ -1490,6 +1608,298 @@ async function upload(file) {
   x.ontimeout = () => done('Sending took too long. The camera works as before — move closer and try again.');
   x.send(file);
 }
+
+// ── Memory card, photos and clips ─────────────────────
+const fmtClock = s => `${s / 60 | 0}:${String(s % 60).padStart(2, '0')}`;
+const fmtWhen = t => t ? new Date(t * 1000).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}) : '';
+const isClip = n => n.endsWith('.MOV');
+const fileUrl = (n, dl) => `/files/get?name=${encodeURIComponent(n)}${dl ? '&dl=1' : ''}`;
+function renderStorage() {
+  const st = S.storage || {state: 'none'}, ok = st.state === 'ok', watch = canWatch(), rec = !!st.recording;
+  $('#btnSaveLive').hidden = !(ok && watch);
+  $('#btnRecLive').hidden = !((ok || rec) && watch);
+  $('#btnRecLive').setAttribute('aria-pressed', rec);
+  $('#recLiveText').textContent = rec ? 'Stop' : 'Record';
+  $('#recPill').hidden = !rec;
+  $('#recPillText').textContent = 'REC ' + fmtClock(st.rec_s || 0);
+  $('#btnSavePhoto').disabled = !(ok && watch);
+  $('#btnRec').disabled = !((ok || rec) && watch);
+  $('#btnRecText').textContent = rec ? `Stop (${fmtClock(st.rec_s || 0)})` : 'Record';
+  const [kind, badge, text] = {
+    none: ['', 'None', "No memory card is connected. If you've wired one, choose its pins under Settings → Advanced details."],
+    missing: ['warn', 'Not answering', "The memory card isn't answering. Check its wiring and the pins under Settings → Advanced details."],
+    full: ['warn', 'Full', 'The memory card is full. Delete some photos or clips to save more.'],
+    ok: ['ok', 'Ready', ''],
+  }[st.state] || ['', st.state, ''];
+  $('#sdBadge').innerHTML = `<span class="badge ${kind}">${esc(badge)}</span>`;
+  const t = [text, st.why ? `Last problem: ${st.why}.` : ''].filter(Boolean).join(' ');
+  $('#sdText').textContent = t;
+  $('#sdText').hidden = !t;
+  const has = ok || st.state === 'full';
+  $('#sdMeterRow').hidden = $('#sdDeleteRow').hidden = !has;
+  if (has) { $('#sdUsed').textContent = `${fmtBytes(st.used)} of ${fmtBytes(st.total)}`; $('#sdBar').style.width = (st.used / st.total * 100) + '%'; }
+  // Sleep
+  const p = S.power || {};
+  $('#sleepHint').textContent = p.blocker === 'Sleep is off' ? 'Stays awake'
+    : p.blocker ? `Won't sleep now: ${p.blocker[0].toLowerCase() + p.blocker.slice(1)}` : 'Sleeps once nobody has used it that long';
+  $('#btnSleep').disabled = !imuOn() || !O || O.imu_int < 0;
+  renderOptRows();
+  // Reload what depends on the card, the password and the network once
+  // they're known or change
+  const gk = [st.state, watch, viaHotspot()].join(), dk = [S.detect?.state, watch].join();
+  if (page === 'photos' && gk !== galKey) { galKey = gk; loadGallery(true); }
+  if (page === 'system' && dk !== detKey) { detKey = dk; loadDetect(); }
+}
+let galKey = '', detKey = '';
+$('#btnSaveLive').onclick = $('#btnSavePhoto').onclick = async () => {
+  try {
+    await authed('/capture/photo', {method: 'POST'});
+    toast('Saved on the camera');
+    setTimeout(() => { if (page === 'photos') loadGallery(true); }, 1500);
+  } catch (e) { toast(e.message, 'bad'); }
+};
+$('#btnRecLive').onclick = $('#btnRec').onclick = async () => {
+  const on = !!S?.storage?.recording;
+  try {
+    await authed('/capture/record?do=' + (on ? 'stop' : 'start'), {method: 'POST'});
+    toast(on ? 'Clip saved' : 'Recording…');
+    setTimeout(pollStatus, 700);
+    if (on) setTimeout(() => { if (page === 'photos') loadGallery(true); }, 2500);
+  } catch (e) { toast(e.message, 'bad'); }
+};
+
+// Gallery. Thumbnails load two at a time: each download holds one of the
+// camera's few connections
+let galN = 0;
+const thumbs = [];
+let thumbBusy = 0;
+function pumpThumbs() {
+  while (thumbBusy < 2 && thumbs.length) {
+    const img = thumbs.shift();
+    if (!img.isConnected) continue;
+    thumbBusy++;
+    img.onload = img.onerror = () => { thumbBusy--; pumpThumbs(); };
+    img.src = img.dataset.src;
+  }
+}
+function tileHTML(f) {
+  const when = esc(fmtWhen(f.time) || f.name);
+  return `<button type="button" data-name="${esc(f.name)}" data-time="${f.time}" data-size="${f.size}" title="${when}">` +
+    (isClip(f.name) ? `<span class="play">${icon('play')}</span><span class="tag">Clip · ${fmtBytes(f.size)}</span>`
+      : `<img data-src="${fileUrl(f.name)}" alt="${when}">`) + '</button>';
+}
+async function loadGallery(reset) {
+  if (reset) { galN = 0; $('#gallery').innerHTML = ''; thumbs.length = 0; }
+  const st = S?.storage?.state;
+  const why = viaHotspot() ? ['Photos are shown on your home WiFi', "The camera's own WiFi is only for setting it up."]
+    : S && !canWatch() ? ['Enter the password to see them', '']
+    : !st || st === 'none' || st === 'missing' ? ['No memory card', 'Photos and clips are saved on a memory card connected to the camera.'] : null;
+  if (why) {
+    $('#galEmpty').hidden = false; $('#galMore').hidden = true; $('#galCount').textContent = '';
+    [$('#galEmptyT').textContent, $('#galEmptyS').textContent] = why;
+    return;
+  }
+  let d;
+  try { d = await getJSON(`/files?offset=${galN}&limit=48`, 6000); } catch (_) { toast("Couldn't load the photos", 'bad'); return; }
+  galN += d.files.length;
+  $('#gallery').insertAdjacentHTML('beforeend', d.files.map(tileHTML).join(''));
+  thumbs.push(...$$('#gallery img[data-src]:not([src])'));
+  pumpThumbs();
+  $('#galEmpty').hidden = d.total > 0;
+  $('#galEmptyT').textContent = 'Nothing saved yet';
+  $('#galEmptyS').textContent = 'Take a photo, record a clip, or turn something on under Automatic.';
+  $('#galCount').textContent = d.total ? `${d.total} saved` : '';
+  $('#galMore').hidden = galN >= d.total;
+}
+$('#galMore').onclick = () => loadGallery(false);
+$('#gallery').onclick = e => { const b = e.target.closest('button[data-name]'); if (b) openFile(b.dataset); };
+$('#btnDelAll').onclick = async () => {
+  if (!(await ask('Delete all photos and clips?', "Everything on the camera's memory card is deleted. This can't be undone.", 'Delete all', true))) return;
+  try { await authed('/files/delete?name=all', {method: 'POST'}); toast('Deleted'); loadGallery(true); pollStatus(); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+
+// Viewer. A clip plays here by itself: its frames are JPEGs, indexed by the
+// moov atom at its end (mov_writer.h)
+let viewing = null, clipTimer = 0, clipUrls = [];
+function stopClip() { clearTimeout(clipTimer); clipUrls.forEach(u => URL.revokeObjectURL(u)); clipUrls = []; }
+function movFrames(b) {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const tag = o => String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3]);
+  let o = 0, moov = -1, end = b.length;
+  while (o + 8 <= b.length) {
+    const sz = dv.getUint32(o);
+    if (sz < 8) break;
+    if (tag(o + 4) === 'moov') { moov = o; end = Math.min(b.length, o + sz); break; }
+    o += sz;
+  }
+  if (moov < 0) return [];
+  const box = t => { for (let p = moov + 8; p + 4 <= end; p++) if (b[p] === t.charCodeAt(0) && tag(p) === t) return p - 4; return -1; };
+  const stsz = box('stsz'), stco = box('stco'), stts = box('stts');
+  if (stsz < 0 || stco < 0) return [];
+  const n = dv.getUint32(stsz + 16), out = [];
+  for (let i = 0; i < n; i++) out.push({o: dv.getUint32(stco + 16 + 4 * i), s: dv.getUint32(stsz + 20 + 4 * i), d: 66});
+  if (stts >= 0) {
+    for (let r = 0, k = 0; r < dv.getUint32(stts + 12); r++) {
+      const c = dv.getUint32(stts + 16 + 8 * r), d = dv.getUint32(stts + 20 + 8 * r);
+      for (let j = 0; j < c && k < n; j++) out[k++].d = d;
+    }
+  }
+  return out;
+}
+async function playClip(name) {
+  let b;
+  try { const r = await fetch(fileUrl(name)); if (!r.ok) throw 0; b = new Uint8Array(await r.arrayBuffer()); }
+  catch (_) { toast("Couldn't load the clip", 'bad'); return; }
+  if (viewing !== name) return;
+  const frames = movFrames(b);
+  if (!frames.length) { toast("This clip can't be played here — download it instead", 'bad'); return; }
+  clipUrls = frames.map(f => URL.createObjectURL(new Blob([b.subarray(f.o, f.o + f.s)], {type: 'image/jpeg'})));
+  let i = 0;
+  const step = () => {
+    if (viewing !== name) return;
+    $('#viewImg').src = clipUrls[i];
+    const d = frames[i].d;
+    i = (i + 1) % frames.length;
+    clipTimer = setTimeout(step, d);
+  };
+  step();
+}
+function openFile(d) {
+  viewing = d.name;
+  stopClip();
+  $('#viewInfo').textContent = [fmtWhen(+d.time), fmtBytes(+d.size), d.name].filter(Boolean).join(' · ');
+  $('#viewDl').href = fileUrl(d.name, true);
+  $('#viewDl').setAttribute('download', d.name);
+  $('#viewImg').src = isClip(d.name) ? BLANK : fileUrl(d.name);
+  $('#viewDlg').showModal();
+  if (isClip(d.name)) playClip(d.name);
+}
+$('#viewClose').onclick = () => $('#viewDlg').close();
+$('#viewDlg').onclose = () => { viewing = null; stopClip(); $('#viewImg').src = BLANK; };
+$('#viewDel').onclick = async () => {
+  const name = viewing;
+  if (!name || !(await ask(isClip(name) ? 'Delete this clip?' : 'Delete this photo?', "It's removed from the memory card.", 'Delete', true))) return;
+  try {
+    await authed('/files/delete?name=' + encodeURIComponent(name), {method: 'POST'});
+    $('#viewDlg').close();
+    $(`#gallery button[data-name="${name}"]`)?.remove();
+    toast('Deleted');
+    pollStatus();
+  } catch (e) { toast(e.message, 'bad'); }
+};
+
+// ── Options: wiring, automatic photos, sleep, detection ──
+let O = null;
+async function loadOptions() {
+  try { O = await getJSON('/options'); } catch (_) { return; }
+  $$('select.pinsel').forEach(sel => {
+    const pins = O.pins.filter(p => !sel.classList.contains('wake') || p <= 21);
+    sel.innerHTML = '<option value="-1">Not connected</option>' + pins.map(p => `<option value="${p}">GPIO ${p}</option>`).join('');
+  });
+  $$('[data-opt]').forEach(el => {
+    const v = O[el.dataset.opt];
+    if (v === undefined || document.activeElement === el) return;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+    showVal(el);
+  });
+  if (S) renderStorage();
+}
+// Only what this camera has: motion rows need the IMU, detection a model
+function renderOptRows() {
+  $('#rowMotion').hidden = $('#rowMotionSens').hidden = !imuOn();
+  $('#rowDetectAct').hidden = (S?.detect?.state || 'none') === 'none';
+}
+$$('[data-opt]').forEach(el => {
+  const send = async () => {
+    const key = el.dataset.opt, v = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value.trim();
+    try {
+      const j = await (await authed(`/options/set?key=${key}&val=${encodeURIComponent(v)}`, {method: 'POST'})).json();
+      if (O) O[key] = key === 'detect_only' ? v : +v;
+      saved(el);
+      if (key === 'detect_on') setTimeout(() => { pollStatus(); loadDetect(); }, 2500);
+      if (j.restart && await ask('Restart now?', 'The new wiring is used after a restart.', 'Restart')) {
+        await authed('/system/reboot', {method: 'POST'});
+        watchRestart('reboot');
+      }
+    } catch (e) { toast(e.message, 'bad'); loadOptions(); }
+  };
+  if (el.type === 'range') { el.oninput = () => showVal(el); el.onchange = debounce(send, 150); }
+  else el.onchange = send;
+});
+$('#btnSleep').onclick = async () => {
+  if (!(await ask('Put the camera to sleep?', 'The video and its WiFi stop until you move the camera. Waking takes about five seconds.', 'Sleep'))) return;
+  try { await authed('/system/sleep', {method: 'POST'}); sleeping = true; toast('Asleep — move the camera to wake it'); }
+  catch (e) { toast(e.message, 'bad'); }
+};
+
+// ── Animal detection ──────────────────────────────────
+let D = null;
+async function loadDetect() {
+  if (canWatch()) { try { D = await getJSON('/detect'); } catch (_) {} }
+  renderDetect();
+}
+function renderDetect() {
+  const st = D?.state || S?.detect?.state || 'none';
+  const [kind, badge] = {none: ['', 'No model'], off: ['', 'Off'], loading: ['warn', 'Loading…'], running: ['ok', 'On'], error: ['bad', 'Problem']}[st] || ['', st];
+  $('#detBadge').innerHTML = `<span class="badge ${kind}">${esc(badge)}</span>`;
+  $('#detText').textContent = st === 'none' ? 'Upload a model that knows the animals you want to spot (below). It runs on the camera itself — nothing is sent anywhere.'
+    : st === 'error' ? (D?.why || "The model couldn't run.")
+    : D?.model ? `Model: ${D.model}` + (D.input ? ` · looks at ${D.input[0]}×${D.input[1]} · ${D.kind === 'grid' ? 'shows where' : 'names what it sees'}` + (D.ms ? ` · ${D.ms} ms a look` : '') : '')
+    : viaHotspot() ? 'Details are shown on your home WiFi.' : '';
+  $('#btnModelDel').hidden = st === 'none';
+  // Not "background", "no person"…: those mean nothing was seen (detect_post.h)
+  $('#detLabels').innerHTML = (D?.labels || []).filter(l => !/^(background|none|nothing|empty|unknown|other|no[ _-].*)$/i.test(l))
+    .map(l => `<span class="badge" data-label="${esc(l)}" title="Watch only for this">${esc(l)}</span>`).join('');
+}
+$('#detLabels').onclick = e => {
+  const l = e.target.closest('[data-label]')?.dataset.label, inp = $('#o-detect_only');
+  if (!l) return;
+  const have = inp.value.split(',').map(x => x.trim()).filter(Boolean);
+  if (!have.includes(l)) { inp.value = [...have, l].join(', '); inp.onchange(); }
+};
+async function pollDetectLive() {
+  try { D = await getJSON('/detect', 2000); } catch (_) { return; }
+  const res = D.state === 'running' && D.age_ms < 4000 ? D.results : [];
+  $('#detChips').innerHTML = res.filter(r => r.x < 0)
+    .map(r => `<span class="pill">${icon('paw')}${esc(r.label)} ${Math.round(r.score * 100)}%</span>`).join('');
+  // Grid models say where: onto the picture as shown (object-fit: contain)
+  const box = $('#video').getBoundingClientRect(), nw = cam.naturalWidth || 4, nh = cam.naturalHeight || 3;
+  const k = Math.min(box.width / nw, box.height / nh), w = nw * k, h = nh * k, x0 = (box.width - w) / 2, y0 = (box.height - h) / 2;
+  $('#detDots').innerHTML = !gotFrame() ? '' : res.filter(r => r.x >= 0).map(r => {
+    const at = `left:${(x0 + r.x * w).toFixed(0)}px;top:${(y0 + r.y * h).toFixed(0)}px`;
+    return `<i style="${at}"></i><span style="${at}">${esc(r.label)} ${Math.round(r.score * 100)}%</span>`;
+  }).join('');
+}
+const MODEL_MAX = 0x360000 - 4096; // the "spiffs" partition, minus its header
+$('#btnModelUp').onclick = async () => {
+  const m = $('#mFile').files[0], l = $('#lFile').files[0] || new Blob([]);
+  if (!m) return toast('Choose the model file (.tflite) first', 'bad');
+  const head = new Uint8Array(await m.slice(0, 8).arrayBuffer());
+  if (String.fromCharCode(...head.slice(4, 8)) !== 'TFL3') return toast(`${m.name} isn't a TensorFlow Lite model`, 'bad');
+  if (m.size + l.size > MODEL_MAX) return toast('The model is too big: at most 3.3 MB', 'bad');
+  try { await authed('/auth'); } catch (e) { return toast(e.message, 'bad'); }
+  const name = m.name.replace(/\.(tflite|lite)$/i, '').slice(0, 47);
+  const prog = $('#mProg'), bar = $('#mBar'), pct = $('#mPct'), txt = $('#mText');
+  prog.hidden = false; txt.textContent = `Sending ${name} (${fmtBytes(m.size)})…`; bar.style.width = '0';
+  const x = new XMLHttpRequest();
+  x.open('POST', `/model?name=${encodeURIComponent(name)}&model_len=${m.size}&labels_len=${l.size}&range=${$('#mRange').value}`);
+  x.timeout = 180000;
+  x.setRequestHeader('Content-Type', 'application/octet-stream');
+  x.setRequestHeader('X-Token', store.get());
+  x.upload.onprogress = e => { if (e.lengthComputable) { const p = e.loaded / e.total * 100 | 0; bar.style.width = p + '%'; pct.textContent = p + '%'; } };
+  x.onload = () => {
+    if (x.status === 200) { txt.textContent = 'Model stored. Loading it…'; pct.textContent = ''; toast('Model uploaded'); setTimeout(() => { pollStatus(); loadDetect(); }, 3000); }
+    else txt.textContent = `The upload didn't go through (${x.responseText || x.status}).`;
+  };
+  x.onerror = x.ontimeout = () => { txt.textContent = 'The connection dropped while sending. Try again.'; };
+  x.send(new Blob([m, l]));
+};
+$('#btnModelDel').onclick = async () => {
+  if (!(await ask('Remove the model?', 'Animal detection stops until you upload another one.', 'Remove', true))) return;
+  try { await authed('/model/forget', {method: 'POST'}); D = null; toast('Model removed'); setTimeout(() => { pollStatus(); loadDetect(); }, 800); }
+  catch (e) { toast(e.message, 'bad'); }
+};
 
 // ── Start ─────────────────────────────────────────────
 renderTheme();

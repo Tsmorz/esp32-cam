@@ -1,11 +1,14 @@
 #include "imu.h"
 #include "basicvqf.hpp"
 #include "mag_cal.h"
+#include "options.h"
 #include "settings.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <Wire.h>
 #include <atomic>
+#include <esp_attr.h>
+#include <esp_system.h>
 
 // ── LSM6DSOX register map
 // ─────────────────────────────────────────────────────
@@ -15,8 +18,15 @@ static const uint8_t LSM_ADDRS[] = {0x6A, 0x6B};
 #define LSM_CTRL1 0x10  // accel control
 #define LSM_CTRL2 0x11  // gyro  control
 #define LSM_CTRL3 0x12  // general control (BDU, IF_INC)
+#define LSM_CTRL6 0x15  // XL_HM_MODE (bit4): 1 = accel low-power modes
+#define LSM_WU_SRC 0x1B // wake-up source; reading it clears a latched event
 #define LSM_STATUS 0x1E // bit1 GDA: new gyro sample available
 #define LSM_OUT 0x22    // first output register: OUTX_L_G
+#define LSM_TAP0 0x56   // LIR (bit0): latch interrupts
+#define LSM_TAP2 0x58   // INTERRUPTS_ENABLE (bit7)
+#define LSM_WU_THS 0x5B // wake-up threshold, FS/64 per LSB
+#define LSM_WU_DUR 0x5C // wake-up duration
+#define LSM_MD1 0x5E    // INT1 routing: INT1_WU (bit5)
 
 // ── LIS3MDL register map
 // ──────────────────────────────────────────────────────
@@ -65,6 +75,20 @@ static MagCal _cal;
 static MagCalRun _run;
 static bool _cal_running = false;
 static std::atomic<bool> _cal_changed{false}; // → VQF converges again
+static std::atomic<bool> _moved{false};       // imu_motion_take()
+static TaskHandle_t _task = nullptr;
+
+// Gyro bias survives deep sleep: after a wake by motion the board is moving,
+// so the first second can't be used to measure it again
+RTC_DATA_ATTR static double _rtc_bias[3];
+RTC_DATA_ATTR static bool _rtc_bias_ok = false;
+
+// Software motion detection while awake, by options().motion_sens (1–3):
+// turning faster than this, or a jolt this far from 1 g
+static constexpr double MOVE_GYR[] = {0, 1.0, 0.5, 0.25}; // rad/s
+static constexpr double MOVE_ACC[] = {0, 3.0, 1.5, 0.8};  // m/s²
+// The same for waking from sleep, in WU_THS steps of 62.5 mg (±4 g / 64)
+static constexpr uint8_t WAKE_THS[] = {0, 8, 4, 2};
 
 // ── I2C helpers
 // ───────────────────────────────────────────────────────────────
@@ -122,6 +146,12 @@ static void imu_task(void *) {
   double sum[3] = {0, 0, 0};
   int cal = 0;
   bool moving = false;
+  if (esp_reset_reason() == ESP_RST_DEEPSLEEP && _rtc_bias_ok) {
+    memcpy(bias, _rtc_bias, sizeof(bias));
+    cal = CAL_SAMPLES;
+    _calibrated = true;
+    Serial.println("[imu] woke from sleep: gyro bias from before");
+  }
 
   TickType_t wake = xTaskGetTickCount();
   for (;;) {
@@ -154,7 +184,8 @@ static void imu_task(void *) {
                            "removed, expect drift");
           } else {
             for (int i = 0; i < 3; i++)
-              bias[i] = sum[i] / CAL_SAMPLES;
+              _rtc_bias[i] = bias[i] = sum[i] / CAL_SAMPLES;
+            _rtc_bias_ok = true;
             Serial.printf("[imu] gyro bias [%+.2f %+.2f %+.2f] °/s\n",
                           bias[0] * 180 / M_PI, bias[1] * 180 / M_PI,
                           bias[2] * 180 / M_PI);
@@ -166,6 +197,14 @@ static void imu_task(void *) {
       for (int i = 0; i < 3; i++)
         gyr[i] -= bias[i];
       _vqf->update(gyr, acc);
+      const int s = options().motion_sens;
+      const double g =
+          sqrt(gyr[0] * gyr[0] + gyr[1] * gyr[1] + gyr[2] * gyr[2]);
+      const double a =
+          sqrt(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
+      if (s >= 1 && s <= 3 &&
+          (g > MOVE_GYR[s] || fabs(a - 9.80665) > MOVE_ACC[s]))
+        _moved = true;
     }
     if (!_calibrated)
       continue;
@@ -231,8 +270,14 @@ bool imu_init() {
     return false;
   }
   wr(_lsm, LSM_CTRL3, 0x44); // BDU=1, IF_INC=1 (block-data-update + auto-inc)
-  wr(_lsm, LSM_CTRL2, 0x34); // gyro:  52 Hz, 500 dps
-  wr(_lsm, LSM_CTRL1, 0x38); // accel: 52 Hz, ±4 g
+  // Undo imu_prepare_wake(): high-performance mode, no wake-up interrupt
+  wr(_lsm, LSM_CTRL6, 0x00);
+  wr(_lsm, LSM_MD1, 0x00);
+  wr(_lsm, LSM_TAP2, 0x00);
+  uint8_t src;
+  rd(_lsm, LSM_WU_SRC, &src, 1); // clears the latched event that woke us
+  wr(_lsm, LSM_CTRL2, 0x34);     // gyro:  52 Hz, 500 dps
+  wr(_lsm, LSM_CTRL1, 0x38);     // accel: 52 Hz, ±4 g
 
   _mag = probe(MAG_ADDRS, sizeof(MAG_ADDRS), MAG_WHO, 0x3D);
   if (_mag) {
@@ -254,7 +299,32 @@ bool imu_init() {
 void imu_start(BaseType_t core, UBaseType_t prio) {
   if (!_vqf)
     return;
-  xTaskCreatePinnedToCore(imu_task, "imu", 4096, nullptr, prio, nullptr, core);
+  xTaskCreatePinnedToCore(imu_task, "imu", 4096, nullptr, prio, &_task, core);
+}
+
+bool imu_motion_take() { return _moved.exchange(false); }
+
+bool imu_present() { return _lsm != 0; }
+
+bool imu_prepare_wake(int sens) {
+  if (!_lsm || sens < 1 || sens > 3)
+    return false;
+  if (_task)
+    vTaskSuspend(_task);     // the bus is ours now
+  wr(_lsm, LSM_CTRL2, 0x00); // gyro off
+  wr(_lsm, LSM_CTRL6, 0x10); // accel low-power mode
+  wr(_lsm, LSM_CTRL1, 0x28); // accel 26 Hz, ±4 g
+  wr(_lsm, LSM_WU_DUR, 0x00);
+  wr(_lsm, LSM_WU_THS, WAKE_THS[sens]);
+  wr(_lsm, LSM_TAP0, 0x01); // latch: INT1 stays high until WU_SRC is read
+  wr(_lsm, LSM_TAP2, 0x80); // interrupts on
+  wr(_lsm, LSM_MD1, 0x20);  // wake-up → INT1 (push-pull, active high)
+  if (_mag)
+    wr(_mag, MAG_CTRL3, 0x03); // compass off (~0.3 mA in UHP)
+  delay(100);                  // filters settle; drop what that triggered
+  uint8_t src;
+  rd(_lsm, LSM_WU_SRC, &src, 1);
+  return true;
 }
 
 void imu_get_quat(double quat[4]) {
