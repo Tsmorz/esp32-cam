@@ -1,4 +1,5 @@
 #include "camera_profile.h"
+#include "camera_light.h"
 #include <Arduino.h>
 #include <atomic>
 #include <freertos/semphr.h>
@@ -47,6 +48,8 @@ bool camera_set_stream_size(int fs) {
   sensor_lock();
   const bool ok =
       s->status.framesize == fs || s->set_framesize(s, (framesize_t)fs) == 0;
+  if (ok)
+    camera_light_apply(); // the size set a new PLL and line length
   sensor_unlock();
   if (ok)
     _user_fs = fs;
