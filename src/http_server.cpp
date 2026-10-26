@@ -1,20 +1,16 @@
 #include "http_server.h"
 #include "auth.h"
-#include "calibration_json.h"
-#include "calibration_store.h"
+#include "build_info.h"
 #include "camera.h"
 #include "camera_profile.h"
 #include "config.h"
-#include "detections_json.h"
-#include "detector.h"
 #include "focus.h"
-#include "generated/version.h"
 #include "generated/web_index.h"
 #include "http_util.h"
 #include "imu.h"
 #include "led.h"
 #include "ota_health.h"
-#include "push.h"
+#include "secret_store.h"
 #include "settings.h"
 #include "strbuf.h"
 #include "system.h"
@@ -26,7 +22,6 @@
 #include <esp_http_server.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
-#include <esp_timer.h>
 
 static httpd_handle_t server = nullptr;
 static httpd_handle_t stream_server = nullptr;
@@ -47,39 +42,11 @@ static esp_err_t stream_redirect_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-// ── /detections
-// ─────────────────────────────────────────────────────────────────
-static esp_err_t detections_handler(httpd_req_t *req) {
-  const DetectionFrame f = detector_latest();
-  char buf[3072]; // 8 tags × ~300 B
-  const DetectionsJson a = {true, camera_calibrated(calibration_get()),
-                            TAG_SIZE_M, millis(), esp_timer_get_time()};
-  const size_t n = detections_json(f, a, buf, sizeof(buf));
-  return send_json(req, buf, n);
-}
-
-// ── /pose
-// ───────────────────────────────────────────────────────────────────────
-static esp_err_t pose_handler(httpd_req_t *req) {
-  double q[4];
-  imu_get_quat(q);
-  uint32_t n, err;
-  const char *state = imu_state(&n, &err);
-  char buf[160];
-  int len = snprintf(buf, sizeof(buf),
-                     "{\"q\":[%.6f,%.6f,%.6f,%.6f],\"imu\":\"%s\",\"n\":%lu,"
-                     "\"err\":%lu}",
-                     q[0], q[1], q[2], q[3], state, (unsigned long)n,
-                     (unsigned long)err);
-  httpd_resp_set_type(req, "application/json");
-  httpd_resp_send(req, buf, len);
-  return ESP_OK;
-}
-
-// ── /snapshot, /debug/gray.bmp
+// ── /snapshot
 // ─────────────────────────────────────────────────────────────────
 static esp_err_t snapshot_handler(httpd_req_t *req) {
-  // Always at the stream's size, even if the sensor idles at the detection size
+  if (!video_allowed(req))
+    return ESP_FAIL;
   camera_fb_t *fb = camera_fb_get_at_stream_size();
   if (!fb) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No frame");
@@ -91,56 +58,78 @@ static esp_err_t snapshot_handler(httpd_req_t *req) {
   return res;
 }
 
-static esp_err_t gray_handler(httpd_req_t *req) {
-  uint8_t *bmp = nullptr;
-  size_t len = detector_gray_bmp(&bmp);
-  if (!len) {
-    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No frame processed yet");
-    return ESP_FAIL;
-  }
-  httpd_resp_set_type(req, "image/bmp");
-  esp_err_t res = httpd_resp_send(req, (const char *)bmp, len);
-  free(bmp);
-  return res;
+// ── Anything else: captive portal, or a plain 404
+// ─────────────────────────────────────────────────────────────────
+// A phone that joins the hotspot asks some well-known host (captive.apple.com,
+// connectivitycheck.gstatic.com, www.msftconnecttest.com…) for a test page;
+// the DNS server sends it here. Answering with a redirect to the dashboard
+// makes the phone open it as a sign-in page. Requests addressed to the camera
+// itself still get a 404. Known routes do the same through guarded().
+static esp_err_t not_found_handler(httpd_req_t *req, httpd_err_code_t) {
+  if (!host_ok(req))
+    return redirect_home(req);
+  httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
+  return ESP_FAIL;
 }
 
-// ── /tag?id=N — print page for a tag in the family the detector reads.
-// Centred with zero page margins, so A4 and Letter both leave more than the
-// one-cell white border tag36h11 needs around the black square.
-static esp_err_t tag_handler(httpd_req_t *req) {
-  char query[32], val[8];
-  int id = 0;
-  if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK &&
-      httpd_query_key_value(query, "id", val, sizeof(val)) == ESP_OK)
-    id = atoi(val);
-  if (!detector_ready()) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
-                        "Detector not initialised");
+// ── /pose — orientation from the IMU
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t pose_handler(httpd_req_t *req) {
+  if (!video_allowed(req))
+    return ESP_FAIL;
+  double q[4];
+  imu_get_quat(q);
+  uint32_t n, err;
+  const char *state = imu_state(&n, &err);
+  float f[3];
+  const bool field = imu_mag_field(f);
+  char buf[320];
+  int len = snprintf(
+      buf, sizeof(buf),
+      "{\"q\":[%.6f,%.6f,%.6f,%.6f],\"imu\":\"%s\",\"n\":%lu,\"err\":%lu,"
+      "\"mag\":\"%s\",\"heading\":\"%s\",\"cal\":%.2f,"
+      "\"field_ut\":%.1f}",
+      q[0], q[1], q[2], q[3], state, (unsigned long)n, (unsigned long)err,
+      imu_mag_state(), imu_heading_from_mag() ? "mag" : "gyro",
+      imu_mag_cal_progress(),
+      field ? sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]) : 0.0f);
+  return send_json(req, buf, len);
+}
+
+// ── /imu/compass?do=start|finish|cancel|clear — compass calibration
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t compass_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[32] = {}, act[12] = {};
+  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK ||
+      httpd_query_key_value(qs, "do", act, sizeof(act)) != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "do = start|finish|cancel|clear");
     return ESP_FAIL;
   }
-  char svg[1536];
-  const size_t len = detector_tag_svg(id, svg, sizeof(svg));
-  if (!len) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "tag36h11 ids are 0-586");
+  bool ok = true;
+  const char *why = "do = start|finish|cancel|clear";
+  if (!strcmp(act, "start")) {
+    ok = imu_mag_cal_start();
+    why = "No magnetometer";
+  } else if (!strcmp(act, "finish")) {
+    ok = imu_mag_cal_finish();
+    why = "Not enough rotation yet: keep turning the board in every "
+          "direction, upside down too";
+  } else if (!strcmp(act, "cancel")) {
+    imu_mag_cal_cancel();
+  } else if (!strcmp(act, "clear")) {
+    imu_mag_cal_clear();
+  } else {
+    ok = false;
+  }
+  if (!ok) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, why);
     return ESP_FAIL;
   }
-  char head[512], tail[160];
-  snprintf(head, sizeof(head),
-           "<!doctype html><meta charset=utf-8><title>tag36h11 #%d</title>"
-           "<style>@page{margin:0}html,body{margin:0;background:#fff;"
-           "color:#666;font:12px system-ui,sans-serif}body{height:100vh;"
-           "display:flex;align-items:center;justify-content:center}"
-           "p{position:fixed;bottom:12mm;margin:0}</style>",
-           id);
-  snprintf(tail, sizeof(tail),
-           "<p>AprilTag 36h11 &middot; ID %d &middot; black square %.0f mm "
-           "&middot; print at 100%% scale</p>",
-           id, TAG_SIZE_M * 1000);
-  httpd_resp_set_type(req, "text/html");
-  httpd_resp_send_chunk(req, head, HTTPD_RESP_USE_STRLEN);
-  httpd_resp_send_chunk(req, svg, len);
-  httpd_resp_send_chunk(req, tail, HTTPD_RESP_USE_STRLEN);
-  return httpd_resp_send_chunk(req, nullptr, 0);
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
 }
 
 // ── / (dashboard: web/index.html, gzipped into the firmware at build time)
@@ -155,58 +144,52 @@ static esp_err_t index_handler(httpd_req_t *req) {
 // ── /status — everything the dashboard's header and System page show
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t status_handler(httpd_req_t *req) {
-  char buf[1536];
+  char buf[1280];
   size_t pos = 0;
   const sensor_t *sen = esp_camera_sensor_get();
-  const DetectionFrame f = detector_latest();
-  const DetectorTuning tune = detector_tuning();
-  uint32_t imu_n, imu_err;
-  const char *imu = imu_state(&imu_n, &imu_err);
   const bool sta = WiFi.status() == WL_CONNECTED;
-  char ap_ssid[68], sta_ssid[68], saved[68];
+  char ap_ssid[68], sta_ssid[68], saved[68], joining[68], raw[33];
   json_esc(AP_SSID, ap_ssid, sizeof(ap_ssid));
   json_esc(sta ? WiFi.SSID().c_str() : "", sta_ssid, sizeof(sta_ssid));
-  json_esc(wifi_saved_ssid(), saved, sizeof(saved));
+  wifi_saved_ssid(raw, sizeof(raw));
+  json_esc(raw, saved, sizeof(saved));
+  wifi_joining(raw, sizeof(raw));
+  json_esc(raw, joining, sizeof(joining));
+  uint32_t imu_n, imu_err;
+  const char *imu = imu_state(&imu_n, &imu_err);
 
   appendf(buf, sizeof(buf), pos,
-          "{\"uptime\":%lu,\"version\":\"%s\",\"build\":\"%s "
-          "%s\",\"heap\":%u,\"psram\":%u,"
+          "{\"uptime\":%lu,\"version\":\"%s\",\"build\":\"%s\",\"heap\":%u,"
+          "\"psram\":%u,"
           "\"psram_total\":%u,\"temp_c\":%.1f,\"stream_port\":%d,\"auth\":%s,"
           "\"mirror\":%s,"
           "\"sensor\":\"%s\",\"af\":\"%s\",\"hostname\":\"%s\","
-          "\"schema\":%d,\"ota_pending\":%s,",
-          (unsigned long)(millis() / 1000), FW_VERSION, __DATE__, __TIME__,
+          "\"schema\":%d,\"secrets\":\"%s\",\"ota_pending\":%s,"
+          "\"ota_confirm_s\":%d,\"rolled_back\":%s,\"hotspot\":%s,",
+          (unsigned long)(millis() / 1000), fw_version(), fw_built(),
           (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
           (unsigned)ESP.getPsramSize(), temperatureRead(), STREAM_PORT,
           auth_configured() ? "true" : "false",
           sen && sen->status.hmirror ? "true" : "false", camera_sensor_name(),
-          focus_state(), HOSTNAME, settings_schema(),
-          ota_health_pending() ? "true" : "false");
+          focus_state(), HOSTNAME, settings_schema(), secret_store_protection(),
+          ota_health_pending() ? "true" : "false", ota_health_confirm_s(),
+          ota_health_rolled_back() ? "true" : "false",
+          via_hotspot(req) ? "true" : "false");
   appendf(buf, sizeof(buf), pos,
-          "\"imu\":{\"state\":\"%s\",\"samples\":%lu,\"errors\":%lu},", imu,
-          (unsigned long)imu_n, (unsigned long)imu_err);
+          "\"imu\":{\"state\":\"%s\",\"samples\":%lu,\"errors\":%lu,"
+          "\"mag\":\"%s\"},",
+          imu, (unsigned long)imu_n, (unsigned long)imu_err, imu_mag_state());
+  // ap_on: wifi_tick() turns the hotspot off while STA is up and nobody uses
+  // it. ap_key: its WiFi password is the default, the camera's or AP_PASS.
   appendf(buf, sizeof(buf), pos,
-          "\"detect\":{\"ready\":%s,\"enabled\":%s,\"tag_mm\":%.0f,"
-          "\"calibrated\":%s,\"calibration\":\"%s\",\"res\":%d,"
-          "\"push\":{\"port\":%d,\"subscribers\":%d},\"decode_ms\":%u,"
-          "\"detect_ms\":%u,"
-          "\"age_ms\":%ld,\"count\":%d,"
-          "\"tuning\":{\"decimate\":%.1f,\"diff\":%d,\"cluster\":%d,"
-          "\"refine\":%s}},",
-          detector_ready() ? "true" : "false",
-          detector_enabled() ? "true" : "false", TAG_SIZE_M * 1000,
-          camera_calibrated(calibration_get()) ? "true" : "false",
-          calibration_source(), camera_detect_size(), PUSH_PORT,
-          push_subscribers(), f.decode_ms, f.detect_ms,
-          f.ms ? (long)(millis() - f.ms) : -1L, f.count, tune.decimate,
-          tune.min_diff, tune.min_cluster, tune.refine ? "true" : "false");
-  appendf(
-      buf, sizeof(buf), pos,
-      "\"wifi\":{\"ap_ssid\":\"%s\",\"ap_ip\":\"%s\",\"ap_clients\":%d,"
-      "\"sta_ssid\":\"%s\",\"sta_ip\":\"%s\",\"rssi\":%d,\"saved\":\"%s\"}}",
-      ap_ssid, WiFi.softAPIP().toString().c_str(), WiFi.softAPgetStationNum(),
-      sta_ssid, sta ? WiFi.localIP().toString().c_str() : "",
-      sta ? WiFi.RSSI() : 0, saved);
+          "\"wifi\":{\"ap_on\":%s,\"ap_ssid\":\"%s\",\"ap_ip\":\"%s\","
+          "\"ap_key\":\"%s\",\"ap_clients\":%d,\"sta_ssid\":\"%s\","
+          "\"sta_ip\":\"%s\",\"rssi\":%d,\"saved\":\"%s\",\"joining\":\"%s\"}}",
+          (WiFi.getMode() & WIFI_AP) ? "true" : "false", ap_ssid,
+          WiFi.softAPIP().toString().c_str(), wifi_ap_key(),
+          WiFi.softAPgetStationNum(), sta_ssid,
+          sta ? WiFi.localIP().toString().c_str() : "", sta ? WiFi.RSSI() : 0,
+          saved, joining);
 
   httpd_resp_set_type(req, "application/json");
   httpd_resp_send(req, buf, pos);
@@ -223,12 +206,34 @@ static esp_err_t camera_status_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+// The video cookie (auth.h): sent with the reply to a right password. Cookies
+// ignore the port, so it reaches the stream server on :81 too.
+static void set_video_cookie(httpd_req_t *req, char *buf, size_t size) {
+  snprintf(buf, size,
+           "%s=%s; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict",
+           AUTH_COOKIE, auth_video_cookie());
+  httpd_resp_set_hdr(req, "Set-Cookie", buf);
+}
+
 // ── /auth — is the token right? Lets the dashboard find out before it sends a
 // firmware image: a rejected upload comes back to the browser as a dropped
-// connection, not as the 401.
+// connection, not as the 401. Also hands out the video cookie.
 static esp_err_t auth_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL;
+  char cookie[160];
+  set_video_cookie(req, cookie, sizeof(cookie));
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
+// ── /auth/forget — drop this browser's video cookie (the dashboard's
+// "Forget"). Needs nothing: all it can do is log someone out.
+static esp_err_t auth_forget_handler(httpd_req_t *req) {
+  char cookie[96];
+  snprintf(cookie, sizeof(cookie),
+           "%s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict", AUTH_COOKIE);
+  httpd_resp_set_hdr(req, "Set-Cookie", cookie);
   httpd_resp_sendstr(req, "OK");
   return ESP_OK;
 }
@@ -244,16 +249,20 @@ static esp_err_t auth_claim_handler(httpd_req_t *req) {
   }
   if (!read_body(req, tok, sizeof(tok)))
     return ESP_FAIL;
+  char cookie[160];
   switch (auth_claim(tok)) {
   case ClaimResult::Ok:
+    set_video_cookie(req, cookie, sizeof(cookie));
     httpd_resp_sendstr(req, "OK");
     return ESP_OK;
   case ClaimResult::AlreadySet:
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "A token is already set");
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "This camera already has a password");
     return ESP_FAIL;
   default:
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "Token must be 8-64 printable characters, no spaces");
+                        "Use 8 to 63 characters: letters, numbers and "
+                        "symbols, without spaces or accents");
     return ESP_FAIL;
   }
 }
@@ -277,7 +286,7 @@ static esp_err_t camera_reset_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-// ── /settings/reset?scope=all|camera|detector|wifi|calibration
+// ── /settings/reset?scope=all|camera|wifi|imu|token
 // ─────────────────────────────────────────────────────────────────────
 static esp_err_t settings_reset_handler(httpd_req_t *req) {
   if (!authorized(req))
@@ -287,7 +296,7 @@ static esp_err_t settings_reset_handler(httpd_req_t *req) {
       httpd_query_key_value(qs, "scope", scope, sizeof(scope)) != ESP_OK ||
       !settings_reset(scope)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "scope = all|camera|detector|wifi|calibration|token");
+                        "scope = all|camera|wifi|imu|token");
     return ESP_FAIL;
   }
   httpd_resp_sendstr(req, "OK");
@@ -349,9 +358,11 @@ static esp_err_t wifi_connect_handler(httpd_req_t *req) {
     return ESP_FAIL;
   }
   json_str(body, "pass", pass, sizeof(pass));
+  memset(body, 0, sizeof(body));
 
   httpd_resp_sendstr(req, "OK"); // before the link may change under this reply
-  wifi_save_and_connect(ssid, pass);
+  wifi_request_join(ssid, pass); // loop() joins; saved only once it works
+  memset(pass, 0, sizeof(pass));
   return ESP_OK;
 }
 
@@ -362,18 +373,26 @@ static esp_err_t wifi_connect_handler(httpd_req_t *req) {
 static esp_err_t ota_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL; // closes the socket instead of draining the upload
-  led_set(LED_OTA);
+  if (ota_health_pending()) {
+    // IDF refuses to write the other slot while this image is on probation:
+    // that slot is what a rollback would boot
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Still finishing the last update — try again in a "
+                        "few seconds");
+    return ESP_FAIL;
+  }
   const esp_partition_t *dst = esp_ota_get_next_update_partition(NULL);
   if (!dst || dst == esp_ota_get_running_partition()) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                         "No OTA partition — check partition table");
     return ESP_FAIL;
   }
+  led_set(LED_OTA);
   size_t total = req->content_len;
   esp_ota_handle_t ota;
   if (esp_ota_begin(dst, total > 0 ? total : OTA_SIZE_UNKNOWN, &ota) !=
       ESP_OK) {
-    led_set(LED_IDLE);
+    led_restore();
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                         "OTA begin failed");
     return ESP_FAIL;
@@ -381,16 +400,20 @@ static esp_err_t ota_handler(httpd_req_t *req) {
   uint8_t buf[2048];
   size_t remaining = total;
   bool ok = true;
+  int timeouts = 0;
   while (remaining > 0 || total == 0) {
     size_t to_read =
         (remaining > 0 && remaining < sizeof(buf)) ? remaining : sizeof(buf);
     int recv = httpd_req_recv(req, (char *)buf, to_read);
+    if (recv == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts < 3)
+      continue; // a slow link, not a dropped one
     if (recv == 0)
       break;
     if (recv < 0 || esp_ota_write(ota, buf, recv) != ESP_OK) {
       ok = false;
       break;
     }
+    timeouts = 0;
     if (total > 0)
       remaining -= recv;
   }
@@ -398,7 +421,7 @@ static esp_err_t ota_handler(httpd_req_t *req) {
     esp_ota_abort(ota);
   if (!ok || esp_ota_end(ota) != ESP_OK ||
       esp_ota_set_boot_partition(dst) != ESP_OK) {
-    led_set(LED_IDLE);
+    led_restore();
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
                         "OTA write failed");
     return ESP_FAIL;
@@ -425,95 +448,51 @@ static esp_err_t camera_set_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-// ── /calibration — GET the one in use; POST (JSON) sets it; DELETE forgets it
-// ─────────────────────────────────────────────────────────────────
-static esp_err_t calibration_get_handler(httpd_req_t *req) {
-  char buf[400];
-  return send_json(req, buf, calibration_json(buf, sizeof(buf)));
+// ── Every route goes through guarded(): a request whose Host isn't the
+// camera gets the captive-portal redirect instead. That also shuts out DNS
+// rebinding (a web page whose own name is made to point at the camera).
+struct Route {
+  const char *uri;
+  httpd_method_t method;
+  esp_err_t (*fn)(httpd_req_t *);
+};
+
+static esp_err_t guarded(httpd_req_t *req) {
+  if (!host_ok(req))
+    return redirect_home(req);
+  return static_cast<const Route *>(req->user_ctx)->fn(req);
 }
 
-static esp_err_t calibration_post_handler(httpd_req_t *req) {
-  if (!authorized(req))
+static const Route ROUTES[] = {
+    {"/", HTTP_GET, index_handler},
+    {"/stream", HTTP_GET, stream_redirect_handler},
+    {"/pose", HTTP_GET, pose_handler},
+    {"/imu/compass", HTTP_POST, compass_handler},
+    {"/wifi/scan", HTTP_GET, wifi_scan_handler},
+    {"/wifi/connect", HTTP_POST, wifi_connect_handler},
+    {"/ota", HTTP_POST, ota_handler},
+    {"/camera/set", HTTP_POST, camera_set_handler},
+    {"/snapshot", HTTP_GET, snapshot_handler},
+    {"/status", HTTP_GET, status_handler},
+    {"/auth", HTTP_GET, auth_handler},
+    {"/auth/claim", HTTP_POST, auth_claim_handler},
+    {"/auth/forget", HTTP_GET, auth_forget_handler},
+    {"/camera/status", HTTP_GET, camera_status_handler},
+    {"/camera/reset", HTTP_POST, camera_reset_handler},
+    {"/settings/reset", HTTP_POST, settings_reset_handler},
+    {"/system/reboot", HTTP_POST, reboot_handler},
+};
+
+// The MJPEG stream: home network and password only, like /snapshot
+static esp_err_t stream_guarded(httpd_req_t *req) {
+  if (!host_ok(req))
+    return redirect_home(req);
+  if (!video_allowed(req))
     return ESP_FAIL;
-  char body[512];
-  if (!read_body(req, body, sizeof(body)))
-    return ESP_FAIL;
-  Calibration c;
-  if (!calibration_from_json(body, c) || !calibration_set(c)) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "Need width, height, fx, fy, cx, cy (+ dist[5]) "
-                        "describing a plausible camera");
-    return ESP_FAIL;
-  }
-  Serial.printf("[calib] stored: %dx%d fx=%.1f fy=%.1f cx=%.1f cy=%.1f\n",
-                c.width, c.height, c.fx, c.fy, c.cx, c.cy);
-  return calibration_get_handler(req);
+  return stream_handler(req);
 }
 
-static esp_err_t calibration_delete_handler(httpd_req_t *req) {
-  if (!authorized(req))
-    return ESP_FAIL;
-  calibration_clear();
-  Serial.printf("[calib] cleared — %s\n", calibration_source());
-  return calibration_get_handler(req);
-}
-
-// ── /detector/set?enabled=0|1
-// ─────────────────────────────────────────────────────────────────
-static esp_err_t detector_set_handler(httpd_req_t *req) {
-  if (!authorized(req))
-    return ESP_FAIL;
-  char qs[112] = {}, val[8] = {};
-  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "Missing enabled, res, decimate, diff, cluster or "
-                        "refine");
-    return ESP_FAIL;
-  }
-  bool any = false;
-  if (httpd_query_key_value(qs, "enabled", val, sizeof(val)) == ESP_OK) {
-    detector_set_enabled(atoi(val) != 0);
-    camera_profile_update();
-    any = true;
-  }
-  // res = framesize_t the sensor drops to while nobody watches the stream;
-  // 0 = detect at the stream size
-  if (httpd_query_key_value(qs, "res", val, sizeof(val)) == ESP_OK) {
-    if (!camera_set_detect_size(atoi(val))) {
-      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad res");
-      return ESP_FAIL;
-    }
-    any = true;
-  }
-  // How hard to look: any subset of decimate (1|1.5|2|3|4), diff, cluster,
-  // refine (0|1); the rest stay as they are
-  DetectorTuning t = detector_tuning();
-  bool tuned = false;
-  if (httpd_query_key_value(qs, "decimate", val, sizeof(val)) == ESP_OK)
-    t.decimate = atof(val), tuned = true;
-  if (httpd_query_key_value(qs, "diff", val, sizeof(val)) == ESP_OK)
-    t.min_diff = atoi(val), tuned = true;
-  if (httpd_query_key_value(qs, "cluster", val, sizeof(val)) == ESP_OK)
-    t.min_cluster = atoi(val), tuned = true;
-  if (httpd_query_key_value(qs, "refine", val, sizeof(val)) == ESP_OK)
-    t.refine = atoi(val) != 0, tuned = true;
-  if (tuned) {
-    if (!detector_set_tuning(t)) {
-      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                          "decimate 1|1.5|2|3|4, diff 1-100, cluster 3-100");
-      return ESP_FAIL;
-    }
-    any = true;
-  }
-  if (!any) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
-                        "Missing enabled, res, decimate, diff, cluster or "
-                        "refine");
-    return ESP_FAIL;
-  }
-  httpd_resp_sendstr(req, "OK");
-  return ESP_OK;
-}
+bool http_running() { return server && stream_server; }
 
 void http_start() {
   // Control server: dashboard, JSON polling, settings, OTA
@@ -537,46 +516,27 @@ void http_start() {
   scfg.task_priority = PRIO_HTTP_STREAM;
   scfg.max_uri_handlers = 1;
   scfg.max_open_sockets =
-      3; // 6 + 3 + 2×(listen + ctrl) + UDP push ≤ LWIP_MAX_SOCKETS (16)
+      3; // 6 + 3 + 2×(listen + ctrl) ≤ LWIP_MAX_SOCKETS (16)
   scfg.lru_purge_enable = true;
   scfg.send_wait_timeout = 5; // drop a vanished viewer quickly
 
   if (httpd_start(&server, &cfg) != ESP_OK) {
     Serial.println("[http] control server failed to start");
+    server = nullptr;
     return;
   }
-  const httpd_uri_t routes[] = {
-      {"/", HTTP_GET, index_handler, nullptr},
-      {"/stream", HTTP_GET, stream_redirect_handler, nullptr},
-      {"/detections", HTTP_GET, detections_handler, nullptr},
-      {"/pose", HTTP_GET, pose_handler, nullptr},
-      {"/wifi/scan", HTTP_GET, wifi_scan_handler, nullptr},
-      {"/wifi/connect", HTTP_POST, wifi_connect_handler, nullptr},
-      {"/ota", HTTP_POST, ota_handler, nullptr},
-      {"/camera/set", HTTP_POST, camera_set_handler, nullptr},
-      {"/snapshot", HTTP_GET, snapshot_handler, nullptr},
-      {"/debug/gray.bmp", HTTP_GET, gray_handler, nullptr},
-      {"/tag", HTTP_GET, tag_handler, nullptr},
-      {"/calibration", HTTP_GET, calibration_get_handler, nullptr},
-      {"/calibration", HTTP_POST, calibration_post_handler, nullptr},
-      {"/calibration", HTTP_DELETE, calibration_delete_handler, nullptr},
-      {"/detector/set", HTTP_POST, detector_set_handler, nullptr},
-      {"/status", HTTP_GET, status_handler, nullptr},
-      {"/auth", HTTP_GET, auth_handler, nullptr},
-      {"/auth/claim", HTTP_POST, auth_claim_handler, nullptr},
-      {"/camera/status", HTTP_GET, camera_status_handler, nullptr},
-      {"/camera/reset", HTTP_POST, camera_reset_handler, nullptr},
-      {"/settings/reset", HTTP_POST, settings_reset_handler, nullptr},
-      {"/system/reboot", HTTP_POST, reboot_handler, nullptr},
-  };
-  for (const httpd_uri_t &r : routes)
-    httpd_register_uri_handler(server, &r);
+  for (const Route &r : ROUTES) {
+    const httpd_uri_t u = {r.uri, r.method, guarded, (void *)&r};
+    httpd_register_uri_handler(server, &u);
+  }
+  httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, not_found_handler);
 
   if (httpd_start(&stream_server, &scfg) != ESP_OK) {
     Serial.println("[http] stream server failed to start");
+    stream_server = nullptr;
     return;
   }
-  const httpd_uri_t stream = {"/stream", HTTP_GET, stream_handler, nullptr};
+  const httpd_uri_t stream = {"/stream", HTTP_GET, stream_guarded, nullptr};
   httpd_register_uri_handler(stream_server, &stream);
   Serial.printf("[http] control :%d, stream :%d\n", HTTP_PORT, STREAM_PORT);
 }

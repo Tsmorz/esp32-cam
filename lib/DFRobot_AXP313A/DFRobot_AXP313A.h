@@ -26,7 +26,9 @@ public:
     return (_wire->endTransmission() == 0) ? 0 : -1;
   }
 
-  void enableCameraPower(eCameraType_t type = eOV2640) {
+  // false if the enable register couldn't be read: then nothing is switched,
+  // because writing a guessed value would also turn DCDC1–3 off
+  bool enableCameraPower(eCameraType_t type = eOV2640) {
     // DCDC1 (0x10 bit0) is already ON at boot powering a critical rail — do NOT
     // change its voltage or it will crash the board. Camera DVDD (1.2V) is
     // provided by DCDC2 (bit1), which is also on at boot (reg 0x14 = 0x46 = 70
@@ -36,9 +38,13 @@ public:
     writeReg(AXP313A_DLDO1_CTL, 23); // AVDD  2.8V: 500 + 23×100 = 2800mV
 
     // Enable ALDO1 (bit3) and DLDO1 (bit4) — leave DCDC1/2/3 unchanged
-    writeReg(AXP313A_PWR_CTL, readReg(AXP313A_PWR_CTL) | 0x08 | 0x10);
+    const int ctl = readReg(AXP313A_PWR_CTL);
+    if (ctl < 0)
+      return false;
+    writeReg(AXP313A_PWR_CTL, (uint8_t)ctl | 0x08 | 0x10);
 
     delay(10);
+    return true;
   }
 
 private:
@@ -51,11 +57,13 @@ private:
     _wire->endTransmission();
   }
 
-  uint8_t readReg(uint8_t reg) {
+  int readReg(uint8_t reg) { // -1 on a bus error
     _wire->beginTransmission(AXP313A_ADDR);
     _wire->write(reg);
-    _wire->endTransmission(false);
-    _wire->requestFrom(AXP313A_ADDR, (uint8_t)1);
-    return _wire->available() ? _wire->read() : 0;
+    if (_wire->endTransmission(false) != 0)
+      return -1;
+    if (_wire->requestFrom(AXP313A_ADDR, (uint8_t)1) != 1)
+      return -1;
+    return _wire->available() ? _wire->read() : -1;
   }
 };

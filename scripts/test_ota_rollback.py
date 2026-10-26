@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prove that a bad firmware update rolls back on a real board.
 
-  scripts/test_ota_rollback.py                  # esp32cam.local, token from src/secrets.h
+  scripts/test_ota_rollback.py                  # wifi-camera.local, token from src/secrets.h
   scripts/test_ota_rollback.py -H 192.168.1.50 --token abc12345
 
 Builds a copy of the firmware that crashes shortly before the 20 s OTA confirm

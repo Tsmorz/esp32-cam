@@ -2,3 +2,5 @@
 .vscode/
 src/secrets.h
 src/generated/
+.DS_Store
+__pycache__/

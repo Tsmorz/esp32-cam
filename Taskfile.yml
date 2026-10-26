@@ -24,7 +24,7 @@ tasks:
           echo "src/secrets.h exists"
         else
           cp src/secrets.example.h src/secrets.h
-          echo "Created src/secrets.h — edit WIFI_SSID, WIFI_PASS and API_TOKEN"
+          echo "Created src/secrets.h — uncomment and set what you want (all optional)"
         fi
       - pio pkg install -e {{.ENV}}
       - pio pkg install -e native
@@ -46,7 +46,7 @@ tasks:
       - pio run -e {{.ENV}}
 
   test:
-    desc: "Unit tests on this machine (camera model, tag pose) — no board needed"
+    desc: "Unit tests on this machine (token rules, JSON helpers, VQF + compass) — no board needed"
     cmds:
       - pio test -e native
 

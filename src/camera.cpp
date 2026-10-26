@@ -146,23 +146,15 @@ bool camera_set(const char *var, int val, bool persist) {
 
 void camera_restore() {
   Preferences prefs;
-  // The namespaces are independent: `det` can exist without `cam`
   if (prefs.begin(settings::CAMERA, true)) {
     for (const char *key : PERSISTED)
       if (prefs.isKey(key))
         camera_set(key, prefs.getInt(key), false);
     prefs.end();
   }
-  if (prefs.begin(settings::DETECT, true)) {
-    camera_set_detect_size(prefs.getInt("res", 0), false);
-    prefs.end();
-  }
 }
 
-void camera_reset_settings() {
-  settings_reset("camera");
-  settings_reset("detector");
-}
+void camera_reset_settings() { settings_reset("camera"); }
 
 size_t camera_status_json(char *buf, size_t size) {
   sensor_t *s = esp_camera_sensor_get();
@@ -177,36 +169,26 @@ size_t camera_status_json(char *buf, size_t size) {
         "\"contrast\":%d,\"saturation\":%d,\"sharpness\":%d,\"ae_level\":%d,"
         "\"awb\":%d,\"wb_mode\":%d,\"aec\":%d,\"agc\":%d,\"hmirror\":%d,"
         "\"vflip\":%d,\"af\":%d,\"af_state\":\"%s\",\"af_raw\":%d,"
-        "\"active_framesize\":%d,\"detect_framesize\":%d,\"viewers\":%d}",
+        "\"viewers\":%d}",
         camera_sensor_name(), camera_stream_size(), c.quality, c.brightness,
         c.contrast, c.saturation, c.sharpness, c.ae_level, c.awb, c.wb_mode,
         c.aec, c.agc, c.hmirror, c.vflip, focus_mode(), focus_state(),
-        focus_raw_status(), c.framesize, camera_detect_size(),
-        camera_stream_viewers());
+        focus_raw_status(), camera_stream_viewers());
   }
   if (n < 0)
     return 0;
   return (size_t)n < size ? n : size - 1;
 }
 
-static void (*_on_stream_frame)(const camera_fb_t *) = nullptr;
-
-void camera_on_stream_frame(void (*cb)(const camera_fb_t *fb)) {
-  _on_stream_frame = cb;
-}
-
 esp_err_t stream_handler(httpd_req_t *req) {
   camera_fb_t *fb = nullptr;
   char part_buf[64];
   httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-  camera_viewer_change(
-      +1); // the sensor moves to the stream size while we watch
+  camera_viewer_change(+1); // /camera/status: someone has the stream
   while (true) {
     fb = esp_camera_fb_get();
     if (!fb)
       break;
-    if (_on_stream_frame)
-      _on_stream_frame(fb);
     httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
     size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb->len);
     httpd_resp_send_chunk(req, part_buf, hlen);
