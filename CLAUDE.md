@@ -54,7 +54,7 @@ Multi-file Arduino firmware for the **DFRobot FireBeetle 2 ESP32-S3 V1.0** (N16R
 
 **Security model (the user's rules, 2026-10-26):** the **hotspot is for configuration only** — `/stream`, `/snapshot`, `/pose` answer 403 over it (`via_hotspot()`), and on the home network they need the password (`X-Token` or the `wc_video` cookie from `GET /auth`/claim; `video_allowed()`). **Passwords in NVS are encrypted** (`secret_store`). A forgotten password is reset with the **BOOT button held 5 s** (no terminal). Every route checks `Host` (`host_ok()` → captive redirect), which also blocks DNS rebinding.
 
-**Removed 2026-10-26 at the user's request:** AprilTag detection (detector, pose, calibration, printable tags, detection size, UDP push, IMU-fused track). The last version with it (including uncommitted tracking work) is the local branch `apriltag-archive`. Don't reintroduce it unless asked. The IMU was removed and re-added the same day, now with the magnetometer.
+**Removed 2026-10-26 at the user's request:** AprilTag detection (detector, pose, calibration, printable tags, detection size, UDP push, IMU-fused track). The last version with it (including uncommitted tracking work) is the local tag `archive/apriltag` (it was the branch `apriltag-archive` until 2026-10-27; only `development` and `main` are kept as branches, the user's choice). Don't reintroduce it unless asked. The IMU was removed and re-added the same day, now with the magnetometer.
 
 **Source files:**
 - `main/config.h` — ports, **task core/priority layout**, I²C/LED pins, camera DVP pin map
