@@ -37,7 +37,7 @@ Everything on screen is in plain words — "password", "software update", "motio
 | **Picture** | Size and quality (presets), focus, turn (90° steps), mirror, straighten a wall seen at an angle, light, color, look. Applied instantly and **kept across restarts** |
 | **Photos** | What's on the memory card: a gallery (clips play in the page), download, delete; take a photo or record; automatic photos and clips — timelapse, when the camera is moved, when an animal is seen |
 | **WiFi** | Home WiFi with signal and the addresses to open, the camera's own WiFi (on/off), find and connect to a network, forget it |
-| **Settings** | Version, temperature, motion sensor; animal detection (model upload, on/off, how sure, which animals); sleep; software update; password; set up again, restart, reset (picture, WiFi, compass, add-on settings, password, everything). *Advanced details* has the add-ons' wiring (which GPIO each wire goes to) |
+| **Settings** | Version, temperature, battery, motion sensor; animal detection (model upload, on/off, how sure, which animals); sleep; software update; password; set up again, restart, reset (picture, WiFi, compass, add-on settings, password, everything). *Advanced details* has the add-ons' wiring (which GPIO each wire goes to) |
 
 The page lives in `web/index.html`; `scripts/embed_web.py` gzips it into the firmware at build time (~25 KB). No external assets or web fonts, so it works on the hotspot without internet. Light and dark follow the OS until the header toggle picks one (remembered in the browser).
 
@@ -158,6 +158,10 @@ Upload a **TensorFlow Lite** model (`.tflite`) and its labels (`.txt`, one per l
 - Each look: the newest frame decoded at 1/2–1/8 size, centre-cropped to the model's shape, quantized (`src/detect_post.h`, host-tested). *Picture values* must match training: 0..1 (Edge Impulse), −1..1 (MobileNet) or 0..255
 - Labels such as `background`, `none`, `unknown` or `no …` mean "nothing seen": never shown, never a trigger. *Only these animals* limits triggers to the names listed
 - Measured on this board with TensorFlow's 96×96 person-detection model (a stand-in of the same size class): 133 ms per look including the JPEG decode
+
+## Battery level (optional)
+
+The board charges a Li-ion cell on its BAT connector but can't measure it (the pin some FireBeetles use for that is the camera's VSYNC here). Two equal resistors (e.g. 100 kΩ) from the battery's + to GPIO 9 or 10 and from there to GND, chosen under Settings → *Advanced details* → *Battery sense*, show the charge at the top of every page and in `/status.battery` — accurate to about 10 %; it can't tell when it's charging.
 
 ## Sleep (optional)
 

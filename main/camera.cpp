@@ -127,8 +127,16 @@ const char *camera_sensor_name() {
 static bool apply(sensor_t *s, const char *var, int val) {
   const bool level = val >= -2 && val <= 2;
   const bool flag = val == 0 || val == 1;
-  if (!strcmp(var, "framesize"))
-    return camera_set_stream_size(val);
+  if (!strcmp(var, "framesize")) {
+    const int old = camera_stream_size();
+    if (!camera_set_stream_size(val))
+      return false;
+    if (_quad.set &&
+        !view::same_shape(resolution[old].width, resolution[old].height,
+                          resolution[val].width, resolution[val].height))
+      _quad = view::Quad(); // camera_set() saves that
+    return true;
+  }
   if (!strcmp(var, "quality") && val >= 4 && val <= 63)
     return s->set_quality(s, val) == 0;
   if (!strcmp(var, "brightness") && level)
@@ -186,8 +194,9 @@ bool camera_set(const char *var, int val, bool persist) {
       break;
     }
   }
-  if (!strcmp(var, "hmirror") || !strcmp(var, "rotate"))
-    save_quad(); // moved with the picture
+  if (!strcmp(var, "hmirror") || !strcmp(var, "rotate") ||
+      !strcmp(var, "framesize"))
+    save_quad(); // moved with the picture, or gone with its shape
   return ok;
 }
 

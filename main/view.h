@@ -113,6 +113,13 @@ inline int format(const Quad &q, char *buf, size_t size) {
                   q.p[3], q.p[4], q.p[5], q.p[6], q.p[7]);
 }
 
+// Picture sizes of one shape show the same view (the OV5640 uses one sensor
+// window per aspect ratio); another shape shows a different part, so marked
+// corners no longer fit it
+constexpr bool same_shape(int w1, int h1, int w2, int h2) {
+  return (long)w1 * h2 == (long)w2 * h1;
+}
+
 // The picture on screen changed by s (turned or mirrored): move the corners
 // with it, so the same part of the wall still fills the frame. Corner k goes
 // where s takes corner k of the frame.

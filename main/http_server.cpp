@@ -1,5 +1,6 @@
 #include "http_server.h"
 #include "auth.h"
+#include "battery.h"
 #include "build_info.h"
 #include "camera.h"
 #include "camera_profile.h"
@@ -197,6 +198,11 @@ static esp_err_t status_handler(httpd_req_t *req) {
           recorder_recording() ? "true" : "false", recorder_rec_s(),
           recorder_why(), power_wake_cause(), power_sleep_blocker(),
           power_idle_s(), detect_state());
+  int bat_mv, bat_pct;
+  const char *bat = battery_state(&bat_mv, &bat_pct);
+  appendf(buf, sizeof(buf), pos,
+          "\"battery\":{\"state\":\"%s\",\"mv\":%d,\"pct\":%d},", bat, bat_mv,
+          bat_pct);
   // ap_on: wifi_tick() turns the hotspot off while STA is up and nobody uses
   // it. ap_key: its WiFi password is the default, the camera's or AP_PASS.
   appendf(buf, sizeof(buf), pos,

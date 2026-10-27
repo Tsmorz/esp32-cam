@@ -1,4 +1,5 @@
 #include "auth.h"
+#include "battery.h"
 #include "board.h"
 #include "camera.h"
 #include "config.h"
@@ -77,6 +78,7 @@ void setup() {
   ota_health_init();
   settings_init();
   options_init();
+  battery_init();
   if (power_woke_for_timelapse()) {
     // Woken from sleep for a timelapse photo: take it and sleep again, no
     // WiFi. The IMU is left alone — it still holds its wake-up setup.
@@ -155,6 +157,7 @@ void loop() {
     // network to reach them on
     ota_health_tick(http_running() && (WiFi.status() == WL_CONNECTED ||
                                        (WiFi.getMode() & WIFI_AP)));
+    battery_tick();
     power_tick(); // deep sleep once idle, if set up
   }
   delay(10);

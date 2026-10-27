@@ -423,6 +423,7 @@ dialog code{overflow-wrap:anywhere}
       <a href="#system" data-page="system"><svg class="i"><use href="#i-gear"/></svg>Settings</a>
     </nav>
     <div class="chips">
+      <span class="chip" id="chipBat" title="Battery" hidden><svg class="i" viewBox="0 0 24 24" style="width:17px;height:17px"><rect x="2.5" y="7.5" width="17" height="9" rx="2"/><path d="M21.5 10.5v3"/><rect id="chipBatFill" x="4.5" y="9.5" width="13" height="5" rx=".6" fill="currentColor" stroke="none"/></svg><b id="chipBatText">—</b></span>
       <span class="chip hide-sm" id="chipWifi" title="WiFi"><svg class="i" style="width:15px;height:15px"><use href="#i-wifi"/></svg><b id="chipWifiText">—</b></span>
       <span class="chip hide-sm" id="chipTemp" title="The camera is getting warm" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-temp"/></svg><b id="chipTempText">—</b></span>
       <span class="chip" title="Connection to the camera"><span class="dot" id="connDot"></span><b id="connText">Connecting…</b></span>
@@ -725,6 +726,7 @@ dialog code{overflow-wrap:anywhere}
           <dl class="kv">
             <dt>Software version</dt><dd id="sVersion">—</dd>
             <dt>Temperature</dt><dd id="sTemp">—</dd>
+            <dt class="batrow" hidden>Battery</dt><dd class="batrow" id="sBat" hidden>—</dd>
             <dt>Motion sensor</dt><dd id="sImu">—</dd>
             <dt>Running for</dt><dd id="sUptime">—</dd>
           </dl>
@@ -750,6 +752,7 @@ dialog code{overflow-wrap:anywhere}
             <div class="row"><label for="o-sd_mosi">Memory card MOSI<small>Camera → card (SI)</small></label><select class="pinsel" id="o-sd_mosi" data-opt="sd_mosi"></select></div>
             <div class="row"><label for="o-sd_cs">Memory card CS<small>Chip select</small></label><select class="pinsel" id="o-sd_cs" data-opt="sd_cs"></select></div>
             <div class="row"><label for="o-imu_int">Motion sensor INT1<small>Wakes the camera from sleep</small></label><select class="pinsel wake" id="o-imu_int" data-opt="imu_int"></select></div>
+            <div class="row"><label for="o-bat_pin">Battery sense<small>Two equal resistors, e.g. 100 kΩ: battery + → this pin → GND. Shows the charge at the top of the page</small></label><select class="pinsel adc" id="o-bat_pin" data-opt="bat_pin"></select></div>
             <p style="margin:12px 0 0"><a class="btn sm" href="/status" target="_blank">Status (JSON)</a></p>
           </details>
         </div>
@@ -1152,6 +1155,7 @@ function renderStatus() {
   trackJoin();
   // Settings page
   $('#sVersion').textContent = S.version || '—';
+  renderBattery();
   $('#sTemp').innerHTML = `<span class="num">${t.toFixed(0)} °C</span> <span class="badge ${tLvl}">${{ok: 'Normal', warn: 'Warm', bad: 'Hot'}[tLvl]}</span>`;
   const imu = S.imu || {state: 'none'};
   $('#sImu').textContent = imu.state === 'none' ? 'Not connected' : imu.state === 'calibrating' ? 'Starting…' : imu.mag === 'none' ? 'Working (no compass)' : 'Working, with compass';
@@ -1400,6 +1404,28 @@ function fromSquare([[x0, y0], [x1, y1], [x2, y2], [x3, y3]]) {
   const den = dx1*dy2 - dx2*dy1, g = (dx3*dy2 - dx2*dy3) / den, h = (dx1*dy3 - dx3*dy1) / den;
   return [x1 - x0 + g*x1, x3 - x0 + h*x3, x0, y1 - y0 + g*y1, y3 - y0 + h*y3, y0, g, h, 1];
 }
+// The marked rectangle's real width / height from its corners (0…1 of a
+// w × h picture): Zhang & He, "Whiteboard scanning and image enhancement"
+// (2007). The lens's focal length comes from the two vanishing points
+// (centre of the picture as the optical axis); with only one — a camera
+// turned just sideways — or none, a typical webcam lens, about 64° across.
+// Without this the rectangle would take the frame's shape (a 4:3 poster in a
+// 16:9 picture, a third too wide).
+function quadAspect(q, w, h) {
+  const [m1, m2, m4, m3] = q.map(([u, v]) => [u * w, v * h, 1]); // TL TR BR BL
+  const cross = (a, b) => [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]];
+  const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+  const c14 = cross(m1, m4);
+  const k2 = dot(c14, m3) / dot(cross(m2, m4), m3), k3 = dot(c14, m2) / dot(cross(m3, m4), m2);
+  const n2 = m2.map((v, i) => k2 * v - m1[i]), n3 = m3.map((v, i) => k3 * v - m1[i]);
+  const u0 = w / 2, v0 = h / 2, prod = n2[2] * n3[2], span = Math.max(w, h);
+  let f2 = Math.abs(prod) < 1e-9 ? NaN : -((n2[0]*n3[0] - (n2[0]*n3[2] + n2[2]*n3[0]) * u0 + n2[2]*n3[2]*u0*u0) +
+                                           (n2[1]*n3[1] - (n2[1]*n3[2] + n2[2]*n3[1]) * v0 + n2[2]*n3[2]*v0*v0)) / prod;
+  if (!(f2 >= (.3 * span) ** 2 && f2 <= (3 * span) ** 2)) f2 = (.8 * span) ** 2;
+  const len2 = n => ((n[0] - u0*n[2]) ** 2 + (n[1] - v0*n[2]) ** 2) / f2 + n[2] ** 2;
+  const r = Math.sqrt(len2(n2) / len2(n3));
+  return Number.isFinite(r) ? Math.min(4, Math.max(.25, r)) : w / h;
+}
 const quadPts = s => { const n = (s || '').split(',').map(Number); return n.length === 8 ? [0, 2, 4, 6].map(i => [n[i] / 1000, n[i+1] / 1000]) : null; };
 const quarter = () => V ? V.turns % 2 : 0;
 // Frame pixels → 0…1 of the picture as shown
@@ -1434,16 +1460,19 @@ function layoutView() {
   if (key === viewKey) return;
   viewKey = key;
   if (!on) { cam.style.cssText = box.style.height = ''; VM = FIT = null; box.style.removeProperty('--ar'); return; }
-  const [vw, vh] = quarter() ? [nh, nw] : [nw, nh];
-  box.style.setProperty('--ar', vw / vh); // a sideways camera gets a tall viewfinder
+  const [vw, vh] = quarter() ? [nh, nw] : [nw, nh], quad = editing ? null : quadPts(V.quad);
+  // A sideways camera gets a tall viewfinder; a straightened one the shape of
+  // what was marked
+  const ar = quad ? quadAspect(quad, vw, vh) : vw / vh;
+  box.style.setProperty('--ar', ar);
   // While placing corners, grow downwards for the hint and buttons where the
   // window has room (a phone), rather than shrink the picture
-  const tall = cw * vh / vw;
+  const tall = cw / ar;
   box.style.height = editing ? Math.max(tall, Math.min(tall + top + bottom, innerHeight - 118)) + 'px' : '';
-  const k = Math.min((cw - 2*side) / vw, (ch - top - bottom) / vh);
-  FIT = {x: (cw - vw*k) / 2, y: top + (ch - top - bottom - vh*k) / 2, w: vw*k, h: vh*k};
+  const k = Math.min((cw - 2*side) / ar, ch - top - bottom);
+  FIT = {x: (cw - ar*k) / 2, y: top + (ch - top - bottom - k) / 2, w: ar*k, h: k};
   // While the corners are being placed, the picture isn't straightened
-  VM = m3([FIT.w, 0, FIT.x, 0, FIT.h, FIT.y, 0, 0, 1], pictureMatrix(nw, nh, editing ? null : quadPts(V.quad)));
+  VM = m3([FIT.w, 0, FIT.x, 0, FIT.h, FIT.y, 0, 0, 1], pictureMatrix(nw, nh, quad));
   const m = VM;
   cam.style.cssText = `inset:auto;left:0;top:0;width:${nw}px;height:${nh}px;object-fit:fill;transform-origin:0 0;` +
     `transform:matrix3d(${m[0]},${m[3]},0,${m[6]},${m[1]},${m[4]},0,${m[7]},0,0,1,0,${m[2]},${m[5]},0,${m[8]})`;
@@ -1455,7 +1484,8 @@ async function shownPhoto(blob) {
   const quad = quadPts(V?.quad);
   if (!quarter() && !quad) return blob;
   const img = await createImageBitmap(blob), nw = img.width, nh = img.height;
-  const [vw, vh] = quarter() ? [nh, nw] : [nw, nh];
+  const [fw, fh] = quarter() ? [nh, nw] : [nw, nh], ar = quad ? quadAspect(quad, fw, fh) : fw / fh;
+  const vh = Math.round(Math.sqrt(fw * fh / ar)), vw = Math.round(vh * ar);
   const cv = document.createElement('canvas'), cx = cv.getContext('2d');
   cv.width = nw; cv.height = nh; cx.drawImage(img, 0, 0);
   const src = cx.getImageData(0, 0, nw, nh).data, out = new ImageData(vw, vh), o = out.data;
@@ -1630,7 +1660,11 @@ async function setCam(v, val, okMsg, el) {
   try {
     await authed(`/camera/set?var=${v}&val=${val}`, {method: 'POST'});
     el ? saved(el) : okMsg && toast(okMsg);
-    if (['hmirror', 'rotate', 'quad'].includes(v)) loadView(); // the corners move with the picture
+    if (['hmirror', 'rotate', 'quad', 'framesize'].includes(v)) { // the corners move with the picture
+      const had = !!quadPts(V?.quad);
+      await loadView();
+      if (had && !quadPts(V.quad)) toast('Straightening removed: this picture size shows a different part of the view. Straighten again on Live.', 'bad');
+    }
     if (v === 'af' && C) { C.af = val === 1 ? C.af : val; setTimeout(loadCamera, 900); }
     return true;
   } catch (e) { toast(/password/i.test(e.message) ? e.message : "Couldn't change that setting", 'bad'); return false; }
@@ -1651,6 +1685,20 @@ $('#btnCamReset').onclick = async () => {
   try { await authed('/camera/reset', {method: 'POST'}); watchRestart('reboot'); }
   catch (e) { toast(e.message, 'bad'); }
 };
+
+// ── Battery (an add-on wire: Settings → Advanced details) ─
+function renderBattery() {
+  const b = S.battery || {state: 'none'}, on = b.state === 'ok' || b.state === 'low';
+  const lvl = b.pct <= 5 ? 'bad' : b.state === 'low' ? 'warn' : '';
+  $('#chipBat').hidden = !on;
+  $('#chipBatText').textContent = b.pct + ' %';
+  $('#chipBatText').style.color = lvl ? `var(--${lvl})` : '';
+  $('#chipBatFill').setAttribute('width', (13 * Math.max(b.pct, 4) / 100).toFixed(1));
+  $('#chipBat').title = `Battery ${b.pct} % (${(b.mv / 1000).toFixed(2)} V)`;
+  $$('.batrow').forEach(el => el.hidden = b.state === 'none');
+  $('#sBat').innerHTML = b.state === 'missing' ? 'No battery connected'
+    : `<span class="num">${b.pct} %</span> <span class="badge ${lvl || 'ok'}">${b.state === 'low' ? 'Low — charge it soon' : 'OK'}</span>`;
+}
 
 // ── WiFi: the camera's name ───────────────────────────
 // http://<name>.local. Typing turns it into what a name may be (hostname_rules.h)
@@ -2116,7 +2164,8 @@ let O = null;
 async function loadOptions() {
   try { O = await getJSON('/options'); } catch (_) { return; }
   $$('select.pinsel').forEach(sel => {
-    const pins = O.pins.filter(p => !sel.classList.contains('wake') || p <= 21);
+    // Wake: an RTC GPIO (≤ 21); battery: ADC1 (≤ 10), the one WiFi leaves free
+    const pins = O.pins.filter(p => (!sel.classList.contains('wake') || p <= 21) && (!sel.classList.contains('adc') || p <= 10));
     sel.innerHTML = '<option value="-1">Not connected</option>' + pins.map(p => `<option value="${p}">GPIO ${p}</option>`).join('');
   });
   $$('[data-opt]').forEach(el => {

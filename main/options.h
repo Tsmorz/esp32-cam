@@ -14,6 +14,7 @@ struct Options {
   // Wiring: a GPIO, or -1 = not connected
   int sd_sck = -1, sd_miso = -1, sd_mosi = -1, sd_cs = -1;
   int imu_int = -1; // LSM6DSOX INT1 → an RTC GPIO, wakes the board
+  int bat_pin = -1; // battery sense (battery.h) → an ADC1 GPIO
   // Automatic photos and clips
   int timelapse_min = 0;     // a photo every N minutes, 0 = off
   int motion_action = 0;     // Action when the camera is moved
@@ -36,5 +37,6 @@ bool options_set(const char *key, const char *val, bool *restart,
 size_t options_json(char *buf, size_t size);
 bool options_pin_free(int gpio); // offered for wiring (not used on board)
 bool options_wake_pin(int gpio); // can wake the chip (RTC GPIO)
+bool options_adc_pin(int gpio);  // can measure a voltage with WiFi on (ADC1)
 // Is label among detect_only (or detect_only empty)?
 bool options_watching(const char *label);

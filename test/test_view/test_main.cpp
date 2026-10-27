@@ -128,6 +128,13 @@ void test_moved_round_trip() {
     }
 }
 
+void test_same_shape() {
+  TEST_ASSERT_TRUE(same_shape(800, 600, 1600, 1200)); // 4:3
+  TEST_ASSERT_TRUE(same_shape(160, 120, 1024, 768));
+  TEST_ASSERT_FALSE(same_shape(800, 600, 1280, 720)); // 4:3 → 16:9
+  TEST_ASSERT_FALSE(same_shape(320, 240, 240, 240));  // → square
+}
+
 void test_moved_unset_stays_unset() {
   TEST_ASSERT_FALSE(moved(Quad(), turned(1)).set);
 }
@@ -145,5 +152,6 @@ int main() {
   RUN_TEST(test_moved_by_a_mirror);
   RUN_TEST(test_moved_round_trip);
   RUN_TEST(test_moved_unset_stays_unset);
+  RUN_TEST(test_same_shape);
   return UNITY_END();
 }
