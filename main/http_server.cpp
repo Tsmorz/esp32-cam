@@ -1,5 +1,6 @@
 #include "http_server.h"
 #include "auth.h"
+#include "battery.h"
 #include "build_info.h"
 #include "camera.h"
 #include "camera_profile.h"
@@ -7,6 +8,7 @@
 #include "detect.h"
 #include "focus.h"
 #include "generated/web_index.h"
+#include "hostname_rules.h"
 #include "http_util.h"
 #include "imu.h"
 #include "led.h"
@@ -162,6 +164,8 @@ static esp_err_t status_handler(httpd_req_t *req) {
   json_esc(raw, joining, sizeof(joining));
   uint32_t imu_n, imu_err;
   const char *imu = imu_state(&imu_n, &imu_err);
+  char hostname[HOSTNAME_MAX + 1];
+  wifi_hostname(hostname, sizeof(hostname));
 
   appendf(buf, sizeof(buf), pos,
           "{\"uptime\":%lu,\"version\":\"%s\",\"build\":\"%s\",\"heap\":%u,"
@@ -176,7 +180,7 @@ static esp_err_t status_handler(httpd_req_t *req) {
           (unsigned)ESP.getPsramSize(), temperatureRead(), STREAM_PORT,
           auth_configured() ? "true" : "false",
           sen && sen->status.hmirror ? "true" : "false", camera_sensor_name(),
-          focus_state(), HOSTNAME, settings_schema(), secret_store_protection(),
+          focus_state(), hostname, settings_schema(), secret_store_protection(),
           ota_health_pending() ? "true" : "false", ota_health_confirm_s(),
           ota_health_rolled_back() ? "true" : "false",
           via_hotspot(req) ? "true" : "false");
@@ -194,6 +198,11 @@ static esp_err_t status_handler(httpd_req_t *req) {
           recorder_recording() ? "true" : "false", recorder_rec_s(),
           recorder_why(), power_wake_cause(), power_sleep_blocker(),
           power_idle_s(), detect_state());
+  int bat_mv, bat_pct;
+  const char *bat = battery_state(&bat_mv, &bat_pct);
+  appendf(buf, sizeof(buf), pos,
+          "\"battery\":{\"state\":\"%s\",\"mv\":%d,\"pct\":%d},", bat, bat_mv,
+          bat_pct);
   // ap_on: wifi_tick() turns the hotspot off while STA is up and nobody uses
   // it. ap_key: its WiFi password is the default, the camera's or AP_PASS.
   appendf(buf, sizeof(buf), pos,
@@ -361,6 +370,24 @@ static esp_err_t wifi_scan_handler(httpd_req_t *req) {
 
 // ── /wifi/connect
 // ────────────────────────────────────────────────────────────────
+// ── /wifi/hostname?name= — the camera's name: http://<name>.local
+// ─────────────────────────────────────────────────────────────────
+static esp_err_t hostname_handler(httpd_req_t *req) {
+  if (!authorized(req))
+    return ESP_FAIL;
+  char qs[64] = {}, name[HOSTNAME_MAX + 2] = {};
+  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK ||
+      httpd_query_key_value(qs, "name", name, sizeof(name)) != ESP_OK ||
+      !wifi_set_hostname(name)) { // announced by wifi_tick()
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                        "Use 1 to 32 lowercase letters, numbers and dashes, "
+                        "not starting or ending with a dash");
+    return ESP_FAIL;
+  }
+  httpd_resp_sendstr(req, "OK");
+  return ESP_OK;
+}
+
 static esp_err_t wifi_connect_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL;
@@ -451,11 +478,15 @@ static esp_err_t ota_handler(httpd_req_t *req) {
 static esp_err_t camera_set_handler(httpd_req_t *req) {
   if (!authorized(req))
     return ESP_FAIL;
-  char qs[128] = {}, var[32] = {}, val[16] = {};
-  if (httpd_req_get_url_query_str(req, qs, sizeof(qs)) != ESP_OK ||
-      httpd_query_key_value(qs, "var", var, sizeof(var)) != ESP_OK ||
-      httpd_query_key_value(qs, "val", val, sizeof(val)) != ESP_OK ||
-      !camera_set(var, atoi(val))) {
+  char qs[160] = {}, var[32] = {}, val[96] = {};
+  const bool got =
+      httpd_req_get_url_query_str(req, qs, sizeof(qs)) == ESP_OK &&
+      httpd_query_key_value(qs, "var", var, sizeof(var)) == ESP_OK &&
+      httpd_query_key_value(qs, "val", val, sizeof(val)) == ESP_OK;
+  url_decode(val); // the corners' commas may come as %2C
+  // quad: the straightening's corners, "" = none (camera_set_quad)
+  if (!got || !(strcmp(var, "quad") ? camera_set(var, atoi(val))
+                                    : camera_set_quad(val))) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad var or val");
     return ESP_FAIL;
   }
@@ -743,6 +774,7 @@ static const Route ROUTES[] = {
     {"/imu/compass", HTTP_POST, compass_handler},
     {"/wifi/scan", HTTP_GET, wifi_scan_handler},
     {"/wifi/connect", HTTP_POST, wifi_connect_handler},
+    {"/wifi/hostname", HTTP_POST, hostname_handler},
     {"/ota", HTTP_POST, ota_handler},
     {"/camera/set", HTTP_POST, camera_set_handler},
     {"/snapshot", HTTP_GET, snapshot_handler},

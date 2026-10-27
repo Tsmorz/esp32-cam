@@ -4,6 +4,7 @@
 #include "config.h"
 #include "focus.h"
 #include "settings.h"
+#include "view.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <cstring>
@@ -21,7 +22,41 @@ static const char *STREAM_PART =
 static const char *const PERSISTED[] = {
     "framesize", "quality", "brightness", "contrast", "saturation", "sharpness",
     "ae_level",  "awb",     "wb_mode",    "aec",      "agc",        "hmirror",
-    "vflip",     "af",      "flicker",    "lowlight"};
+    "rotate",    "af",      "flicker",    "lowlight"};
+static constexpr const char *QUAD_KEY = "quad";
+
+// How the picture is shown (view.h): the sensor mirrors and flips, the
+// dashboard turns the rest and straightens. Only the control httpd task and
+// setup() change these.
+static int _turns = 0;
+static bool _mirror = false;
+static view::Quad _quad;
+
+static bool set_orientation(sensor_t *s, int turns, bool mirror) {
+  const view::Split sp = view::split(turns, mirror);
+  if (s->set_hmirror(s, sp.hmirror) != 0 || s->set_vflip(s, sp.vflip) != 0)
+    return false;
+  // The corners were drawn on the old picture: move them with it
+  _quad = view::moved(
+      _quad, view::mul(view::on_screen(turns, mirror),
+                       view::inverse(view::on_screen(_turns, _mirror))));
+  _turns = turns;
+  _mirror = mirror;
+  return true;
+}
+
+static void save_quad() {
+  Preferences prefs;
+  prefs.begin(settings::CAMERA, false);
+  if (_quad.set) {
+    char buf[48];
+    view::format(_quad, buf, sizeof(buf));
+    prefs.putString(QUAD_KEY, buf);
+  } else if (prefs.isKey(QUAD_KEY)) {
+    prefs.remove(QUAD_KEY);
+  }
+  prefs.end();
+}
 
 bool camera_init() {
   camera_config_t config = {};
@@ -92,8 +127,16 @@ const char *camera_sensor_name() {
 static bool apply(sensor_t *s, const char *var, int val) {
   const bool level = val >= -2 && val <= 2;
   const bool flag = val == 0 || val == 1;
-  if (!strcmp(var, "framesize"))
-    return camera_set_stream_size(val);
+  if (!strcmp(var, "framesize")) {
+    const int old = camera_stream_size();
+    if (!camera_set_stream_size(val))
+      return false;
+    if (_quad.set &&
+        !view::same_shape(resolution[old].width, resolution[old].height,
+                          resolution[val].width, resolution[val].height))
+      _quad = view::Quad(); // camera_set() saves that
+    return true;
+  }
   if (!strcmp(var, "quality") && val >= 4 && val <= 63)
     return s->set_quality(s, val) == 0;
   if (!strcmp(var, "brightness") && level)
@@ -115,9 +158,9 @@ static bool apply(sensor_t *s, const char *var, int val) {
   if (!strcmp(var, "agc") && flag)
     return s->set_gain_ctrl(s, val) == 0;
   if (!strcmp(var, "hmirror") && flag)
-    return s->set_hmirror(s, val) == 0;
-  if (!strcmp(var, "vflip") && flag)
-    return s->set_vflip(s, val) == 0;
+    return set_orientation(s, _turns, val);
+  if (!strcmp(var, "rotate") && val >= 0 && val <= 3)
+    return set_orientation(s, val, _mirror);
   if (!strcmp(var, "af"))
     return focus_set_mode(val);
   if (!strcmp(var, "flicker"))
@@ -151,7 +194,18 @@ bool camera_set(const char *var, int val, bool persist) {
       break;
     }
   }
+  if (!strcmp(var, "hmirror") || !strcmp(var, "rotate") ||
+      !strcmp(var, "framesize"))
+    save_quad(); // moved with the picture, or gone with its shape
   return ok;
+}
+
+bool camera_set_quad(const char *corners) {
+  if (!view::parse(corners, _quad))
+    return false;
+  Serial.printf("[cam] straighten: %s\n", _quad.set ? corners : "off");
+  save_quad();
+  return true;
 }
 
 void camera_restore() {
@@ -160,6 +214,11 @@ void camera_restore() {
     for (const char *key : PERSISTED)
       if (prefs.isKey(key))
         camera_set(key, prefs.getInt(key), false);
+    // After the turn and mirror: the corners were saved for those
+    char corners[48] = "";
+    if (prefs.isKey(QUAD_KEY))
+      prefs.getString(QUAD_KEY, corners, sizeof(corners));
+    view::parse(corners, _quad);
     prefs.end();
   }
 }
@@ -173,16 +232,18 @@ size_t camera_status_json(char *buf, size_t size) {
     n = snprintf(buf, size, "{\"sensor\":\"none\"}");
   } else {
     const camera_status_t &c = s->status;
+    char corners[48];
+    view::format(_quad, corners, sizeof(corners));
     n = snprintf(
         buf, size,
         "{\"sensor\":\"%s\",\"framesize\":%d,\"quality\":%d,\"brightness\":%d,"
         "\"contrast\":%d,\"saturation\":%d,\"sharpness\":%d,\"ae_level\":%d,"
         "\"awb\":%d,\"wb_mode\":%d,\"aec\":%d,\"agc\":%d,\"hmirror\":%d,"
-        "\"vflip\":%d,\"af\":%d,\"af_state\":\"%s\",\"af_raw\":%d,"
-        "\"viewers\":%d,\"colorbar\":%d",
+        "\"rotate\":%d,\"quad\":\"%s\",\"af\":%d,\"af_state\":\"%s\","
+        "\"af_raw\":%d,\"viewers\":%d,\"colorbar\":%d",
         camera_sensor_name(), camera_stream_size(), c.quality, c.brightness,
         c.contrast, c.saturation, c.sharpness, c.ae_level, c.awb, c.wb_mode,
-        c.aec, c.agc, c.hmirror, c.vflip, focus_mode(), focus_state(),
+        c.aec, c.agc, _mirror, _turns, corners, focus_mode(), focus_state(),
         focus_raw_status(), camera_stream_viewers(), c.colorbar);
     if (n >= 0 && (size_t)n < size)
       n += camera_light_json(buf + n, size - n);

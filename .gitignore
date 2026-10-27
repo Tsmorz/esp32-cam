@@ -1,4 +1,5 @@
 .vscode/
+.cache/
 main/secrets.h
 .DS_Store
 __pycache__/

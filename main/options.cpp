@@ -24,7 +24,11 @@ bool options_wake_pin(int g) {
   return g >= 0 && g <= 21 && options_pin_free(g);
 }
 
+// ADC1 is GPIO 1–10; ADC2 is shared with the WiFi radio
+bool options_adc_pin(int g) { return g >= 1 && g <= 10 && options_pin_free(g); }
+
 static bool pin_ok(int v) { return v == -1 || options_pin_free(v); }
+static bool adc_ok(int v) { return v == -1 || options_adc_pin(v); }
 static bool wake_ok(int v) { return v == -1 || options_wake_pin(v); }
 static bool action_ok(int v) { return v >= ACT_NONE && v <= ACT_CLIP; }
 static bool sens_ok(int v) { return v >= 1 && v <= 3; }
@@ -53,6 +57,7 @@ static const Spec SPECS[] = {
     {"sd_mosi", &Options::sd_mosi, pin_ok, true, true},
     {"sd_cs", &Options::sd_cs, pin_ok, true, true},
     {"imu_int", &Options::imu_int, wake_ok, true, true},
+    {"bat_pin", &Options::bat_pin, adc_ok, true, true},
     {"timelapse_min", &Options::timelapse_min, timelapse_ok, false, false},
     {"motion_action", &Options::motion_action, action_ok, false, false},
     {"motion_sens", &Options::motion_sens, sens_ok, false, false},

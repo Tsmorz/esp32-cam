@@ -1,6 +1,7 @@
 #include "wifi_mgr.h"
 #include "auth.h"
 #include "config.h"
+#include "hostname_rules.h"
 #include "secret_store.h"
 #include "settings.h"
 #include <DNSServer.h>
@@ -29,7 +30,12 @@ static const char *_ap_key = "default"; // which password the running AP has
 static portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
 static char _req_ssid[33], _req_pass[65]; // under _mux
 static char _saved_name[33];              // under _mux: _saved_ssid for readers
-static bool _req = false;                 // under _mux
+static void mdns_start(const char *name);
+static_assert(hostname_valid(HOSTNAME),
+              "config.h: HOSTNAME isn't a valid name");
+static char _hostname[HOSTNAME_MAX + 1] = HOSTNAME; // under _mux
+static bool _rename = false; // under _mux: wifi_tick() announces _hostname
+static bool _req = false;    // under _mux
 static char _join_ssid[33], _join_pass[65];
 static bool _joining = false;
 static uint32_t _join_ms = 0;
@@ -124,9 +130,41 @@ static void save_network(const char *ssid, const char *pass) {
   set_saved(ssid, pass);
 }
 
+void wifi_hostname(char *out, size_t n) {
+  portENTER_CRITICAL(&_mux);
+  strlcpy(out, _hostname, n);
+  portEXIT_CRITICAL(&_mux);
+}
+
+bool wifi_set_hostname(const char *name) {
+  if (!hostname_valid(name))
+    return false;
+  Preferences prefs;
+  if (prefs.begin(settings::SYS, false)) {
+    prefs.putString(settings::HOSTNAME_KEY, name);
+    prefs.end();
+  }
+  portENTER_CRITICAL(&_mux);
+  strlcpy(_hostname, name, sizeof(_hostname));
+  _rename = true;
+  portEXIT_CRITICAL(&_mux);
+  return true;
+}
+
 void wifi_start() {
   WiFi.persistent(false); // the dashboard's choice lives in Preferences
-  WiFi.setHostname(HOSTNAME);
+  {
+    Preferences prefs;
+    char name[HOSTNAME_MAX + 1] = "";
+    if (prefs.begin(settings::SYS, true)) {
+      if (prefs.isKey(settings::HOSTNAME_KEY))
+        prefs.getString(settings::HOSTNAME_KEY, name, sizeof(name));
+      prefs.end();
+    }
+    if (hostname_valid(name))
+      strlcpy(_hostname, name, sizeof(_hostname)); // setup(): no readers yet
+  }
+  WiFi.setHostname(_hostname); // what the router lists
   WiFi.mode(WIFI_AP_STA);
   ap_start();
   Serial.printf("[ap]  SSID: %s  http://%s  (password: %s)\n", AP_SSID,
@@ -157,14 +195,34 @@ void wifi_start() {
   if (!up)
     Serial.println("[sta] not connected — AP only");
 
-  // http://<HOSTNAME>.local on the router's network; the IP-stack hooks
-  // re-announce it when STA connects later
-  if (MDNS.begin(HOSTNAME)) {
+  mdns_start(_hostname);
+}
+
+// http://<name>.local on the router's network; the IP-stack hooks
+// re-announce it when STA connects later
+static void mdns_start(const char *name) {
+  if (MDNS.begin(name)) {
     MDNS.addService("http", "tcp", HTTP_PORT);
-    Serial.printf("[mdns] http://%s.local\n", HOSTNAME);
+    Serial.printf("[mdns] http://%s.local\n", name);
   } else {
     Serial.println("[mdns] failed to start");
   }
+}
+
+// A new name from the dashboard: announced at once. The router learns it at
+// the next DHCP renewal.
+static void rename_tick() {
+  char name[HOSTNAME_MAX + 1];
+  portENTER_CRITICAL(&_mux);
+  const bool go = _rename;
+  _rename = false;
+  strlcpy(name, _hostname, sizeof(name));
+  portEXIT_CRITICAL(&_mux);
+  if (!go)
+    return;
+  WiFi.setHostname(name);
+  MDNS.end();
+  mdns_start(name);
 }
 
 void wifi_request_join(const char *ssid, const char *pass) {
@@ -227,6 +285,7 @@ void wifi_tick() {
   const bool sta_up = WiFi.status() == WL_CONNECTED;
   const bool ap_on = (WiFi.getMode() & WIFI_AP) != 0;
   join_tick(sta_up);
+  rename_tick();
 
   // While someone is on the hotspot and the home network is gone, STA's
   // reconnect attempts scan every channel and knock them off — just when they

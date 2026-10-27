@@ -1,6 +1,8 @@
 #include "http_util.h"
 #include "auth.h"
 #include "config.h"
+#include "hostname_rules.h"
+#include "wifi_mgr.h"
 #include <WiFi.h>
 #include <cstdio>
 #include <cstring>
@@ -75,9 +77,11 @@ bool host_ok(httpd_req_t *req) {
   const size_t n = strlen(host);
   if (n && host[n - 1] == '.') // fully qualified: wifi-camera.local.
     host[n - 1] = '\0';
-  char self[INET_ADDRSTRLEN];
+  char self[INET_ADDRSTRLEN], name[HOSTNAME_MAX + 8];
+  wifi_hostname(name, sizeof(name));
+  strlcat(name, ".local", sizeof(name));
   return !host[0] || (local_ip(req, self) && !strcmp(host, self)) ||
-         !strcasecmp(host, HOSTNAME ".local") ||
+         !strcasecmp(host, name) ||
          !strcmp(host, WiFi.softAPIP().toString().c_str()) ||
          !strcmp(host, WiFi.localIP().toString().c_str());
 }
