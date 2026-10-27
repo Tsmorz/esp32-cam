@@ -15,7 +15,7 @@ bool video_allowed(httpd_req_t *req);
 // unknown. out: at least 16 bytes.
 bool local_ip(httpd_req_t *req, char *out);
 bool via_hotspot(httpd_req_t *req);
-// The Host header names the camera (one of its addresses, HOSTNAME.local, or
+// The Host header names the camera (one of its addresses, <its name>.local, or
 // none). Anything else is a phone's connectivity check (captive portal) or a
 // DNS-rebinding page, and gets redirect_home().
 bool host_ok(httpd_req_t *req);

@@ -22,7 +22,8 @@
 // password (from its next start), unless secrets.h sets AP_PASS.
 #define AP_PASS_DEFAULT "wificamera"
 
-// Reachable as http://<HOSTNAME>.local on the router's network (mDNS)
+// Reachable as http://<HOSTNAME>.local on the router's network (mDNS) until
+// it's renamed in the dashboard (wifi_set_hostname)
 #define HOSTNAME "wifi-camera"
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────

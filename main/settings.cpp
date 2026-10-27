@@ -157,6 +157,22 @@ static void settings_scrub() {
                 (unsigned)keep.size());
 }
 
+// "Upside down" was the sensor's vflip alone; the picture is now turned and
+// mirrored (camera.cpp, view.h). A flip is a half turn, mirrored.
+static void upside_down_to_turn() {
+  Preferences prefs;
+  if (!prefs.begin(settings::CAMERA, false))
+    return;
+  if (prefs.isKey("vflip")) {
+    if (prefs.getInt("vflip", 0)) {
+      prefs.putInt("rotate", 2);
+      prefs.putInt("hmirror", !prefs.getInt("hmirror", 0));
+    }
+    prefs.remove("vflip");
+  }
+  prefs.end();
+}
+
 // Brings flash written by an older firmware up to SETTINGS_SCHEMA, oldest step
 // first. Schema 0 → 1 changes nothing: an unversioned flash already used the
 // v1 layout. Returns true if the flash needs scrubbing.
@@ -165,6 +181,8 @@ static bool migrate(int from) {
     clear_ns("det");
     clear_ns("calib");
   }
+  if (from < 4)
+    upside_down_to_turn();
   return from < 3; // passwords encrypted: old plain ones may linger
 }
 
@@ -215,6 +233,14 @@ bool settings_reset(const char *scope) {
   if (all || !strcmp(scope, "wifi")) {
     clear_ns(settings::WIFI);
     known = true;
+  }
+  if (all) { // the name: back to config.h's HOSTNAME
+    Preferences prefs;
+    if (prefs.begin(settings::SYS, false)) {
+      if (prefs.isKey(settings::HOSTNAME_KEY))
+        prefs.remove(settings::HOSTNAME_KEY);
+      prefs.end();
+    }
   }
   if (all || !strcmp(scope, "imu")) {
     clear_ns(settings::IMU);

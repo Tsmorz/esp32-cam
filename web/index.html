@@ -198,8 +198,9 @@ a.btn{color:var(--text);text-decoration:none}
 .note a{color:var(--accent-ink)}
 
 /* ── Video: a viewfinder ────────────────────────────── */
-.video{position:relative;aspect-ratio:4/3;background:#000;border-radius:4px;overflow:hidden;
-  width:min(100%,calc((100dvh - 118px) * 4 / 3));margin:0 auto}
+/* --ar: the picture's shape as shown (portrait when turned sideways) */
+.video{position:relative;aspect-ratio:var(--ar,4/3);background:#000;border-radius:4px;overflow:hidden;
+  width:min(100%,calc((100dvh - 118px) * var(--ar,4/3)));margin:0 auto}
 .video img,.video canvas{position:absolute;inset:0;width:100%;height:100%}
 .video img{object-fit:contain}
 .video img.gray{image-rendering:pixelated}
@@ -219,8 +220,21 @@ a.btn{color:var(--text);text-decoration:none}
 .pill svg.i{width:15px!important;height:15px!important}
 .pill.btn{cursor:pointer;font-weight:500}
 .pill.btn:hover{background:rgba(0,0,0,.75)}
-.pill[aria-pressed=true]{background:#ff3d8b;border-color:#ff3d8b;color:#1c0610}
+.pill.go:hover{background:#ff5c9f}
+.pill[aria-pressed=true],.pill.go{background:#ff3d8b;border-color:#ff3d8b;color:#1c0610}
+.pill.hint{white-space:normal;height:auto;min-height:28px;padding:5px 10px;line-height:1.4;font-family:var(--sans)}
 .spacer{flex:1}
+/* Straighten: four corners to drag onto a rectangle on the wall */
+.stra{position:absolute;inset:0;z-index:1;touch-action:none} /* under the bars: they come later */
+.stra svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.stra polygon{fill:rgba(255,61,139,.14);stroke:#ff3d8b;stroke-width:2;stroke-linejoin:round}
+.stra.bad polygon{stroke-dasharray:6 5;fill:rgba(255,255,255,.06)}
+.stra{cursor:crosshair}
+.stra .dot{fill:rgba(0,0,0,.55);stroke:#ff3d8b;stroke-width:2.5}
+.stra .dot.on{fill:none;stroke-width:1.5}
+/* Magnifier over the corner being dragged, above the finger */
+.video .loupe{position:absolute;inset:auto;z-index:2;width:132px;height:132px;border-radius:50%;border:2px solid #ff3d8b;background:#000;
+  box-shadow:0 6px 24px rgba(0,0,0,.5);pointer-events:none}
 .empty{display:grid;place-items:center;align-content:center;text-align:center;gap:5px;padding:22px 16px;color:var(--muted);font-size:13px}
 .empty svg{width:26px;height:26px;color:var(--faint)}
 .empty b{color:var(--text);font-weight:600;font-size:14px}
@@ -248,6 +262,9 @@ a.btn{color:var(--text);text-decoration:none}
 .meter{height:4px;border-radius:2px;background:var(--raised);overflow:hidden;margin-top:6px}
 .meter i{display:block;height:100%;background:var(--accent);transition:width .4s}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.nameform{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.nameform .addr-in{display:flex;align-items:center;flex:1;min-width:220px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.nameform input{flex:1;min-width:0;margin:0 3px;font-family:var(--mono)}
 .drop{border:1.5px dashed var(--border-strong);border-radius:var(--radius);padding:22px;margin-top:8px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
 .drop:hover,.drop.drag{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
 .drop svg{width:24px;height:24px;color:var(--accent);margin-bottom:4px}
@@ -346,6 +363,7 @@ dialog code{overflow-wrap:anywhere}
   nav.tabs a[aria-current=page]::after{top:-5px;bottom:auto;left:30%;right:30%}
   .chips .chip.hide-sm{display:none}
   .pill .pl{display:none}
+  #adjBar svg{display:none} /* the words fit, the icons don't */
   .vbar{left:14px;right:14px}.vbar.top{top:14px}.vbar.bottom{bottom:14px}
   .brand small{display:none}
   input[type=range]{width:110px}
@@ -384,6 +402,10 @@ dialog code{overflow-wrap:anywhere}
   <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5Z" fill="currentColor"/></symbol>
   <symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.5"/><circle cx="5.8" cy="10.5" r="1.8"/><circle cx="9.5" cy="6.5" r="1.8"/><circle cx="14.5" cy="6.5" r="1.8"/><circle cx="18.2" cy="10.5" r="1.8"/></symbol>
+  <symbol id="i-turn" viewBox="0 0 24 24"><rect x="4" y="9.5" width="10.5" height="10.5" rx="1.5"/><path d="M10 4.5h3.5a6 6 0 0 1 6 6v1.5M17 9.5l2.5 2.5L22 9.5"/></symbol>
+  <symbol id="i-mirror" viewBox="0 0 24 24"><path d="M12 3v18" stroke-dasharray="2 2.5"/><path d="M9 6.5 3.5 17.5H9ZM15 6.5l5.5 11H15Z"/></symbol>
+  <symbol id="i-persp" viewBox="0 0 24 24"><path d="M6 5.5 18.5 4l2 16-17-1.5Z"/><circle cx="6" cy="5.5" r="1.6" fill="currentColor"/><circle cx="18.5" cy="4" r="1.6" fill="currentColor"/><circle cx="20.5" cy="20" r="1.6" fill="currentColor"/><circle cx="3.5" cy="18.5" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-adjust" viewBox="0 0 24 24"><path d="M7 3.5v13.5h13.5M3.5 7H17v13.5"/></symbol>
   <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4.5v4h4"/></symbol>
 </svg>
 
@@ -459,7 +481,9 @@ dialog code{overflow-wrap:anywhere}
       <img id="cam" alt="Live view from the camera">
       <div class="dets" id="detDots"></div>
       <div class="empty" id="camEmpty"><svg class="i"><use href="#i-live"/></svg><b id="camEmptyT">Starting the video…</b><span id="camEmptyS"></span><button class="btn sm" type="button" id="camEmptyBtn" hidden></button></div>
-      <div class="vbar top">
+      <div class="stra" id="stra" hidden><svg aria-label="Corners to drag"><polygon/></svg></div>
+      <div class="vbar top" id="straTop" hidden><span class="pill hint" id="straHint"></span></div>
+      <div class="vbar top" id="liveTop">
         <span class="pill" id="resPill" title="Picture size">—</span>
         <span class="pill" id="focusPill" hidden><svg class="i" style="width:15px;height:15px"><use href="#i-focus"/></svg><span id="focusPillText"></span></span>
         <span class="pill rec" id="recPill" hidden title="Recording to the memory card"><svg class="i"><use href="#i-rec"/></svg><span id="recPillText">REC</span></span>
@@ -467,8 +491,25 @@ dialog code{overflow-wrap:anywhere}
         <span class="spacer"></span>
         <span class="pill" id="headPill" hidden title="Direction the camera faces"><svg class="i" style="width:15px;height:15px"><use href="#i-compass"/></svg><span id="headPillText"></span></span>
       </div>
-      <div class="vbar bottom">
+      <div class="vbar bottom" id="adjBar" hidden>
         <span class="spacer"></span>
+        <button class="pill btn" id="adjTurn" title="Turn the picture a quarter to the right"><svg class="i"><use href="#i-turn"/></svg>Turn</button>
+        <button class="pill btn" id="adjMirror" aria-pressed="false" title="Swap left and right"><svg class="i"><use href="#i-mirror"/></svg>Mirror</button>
+        <button class="pill btn" id="adjStraighten" title="Straighten a wall seen at an angle"><svg class="i"><use href="#i-persp"/></svg>Straighten</button>
+        <button class="pill btn" id="adjDone"><svg class="i"><use href="#i-check"/></svg>Done</button>
+        <span class="spacer"></span>
+      </div>
+      <div class="vbar bottom" id="straBar" hidden>
+        <span class="spacer"></span>
+        <button class="pill btn" id="straOff" hidden>Remove</button>
+        <button class="pill btn" id="straCancel">Cancel</button>
+        <button class="pill btn go" id="straSave"><svg class="i"><use href="#i-check"/></svg>Save</button>
+        <span class="spacer"></span>
+      </div>
+      <canvas class="loupe" id="loupe" hidden></canvas>
+      <div class="vbar bottom" id="liveBar">
+        <span class="spacer"></span>
+        <button class="pill btn" id="btnAdjust" hidden title="Turn, mirror or straighten the picture"><svg class="i" style="width:16px;height:16px"><use href="#i-adjust"/></svg><span class="pl">Adjust</span></button>
         <button class="pill btn" id="btnFocus" hidden aria-label="Focus now" title="Focus now"><svg class="i" style="width:16px;height:16px"><use href="#i-focus"/></svg><span class="pl">Focus</span></button>
         <button class="pill btn" id="btnRecLive" hidden aria-pressed="false" title="Record a clip on the camera's memory card"><svg class="i" style="width:16px;height:16px"><use href="#i-rec"/></svg><span class="pl" id="recLiveText">Record</span></button>
         <button class="pill btn" id="btnSaveLive" hidden title="Save a photo on the camera's memory card"><svg class="i" style="width:16px;height:16px"><use href="#i-gallery"/></svg><span class="pl">Save</span></button>
@@ -534,10 +575,14 @@ dialog code{overflow-wrap:anywhere}
       </div>
 
       <div class="card">
-        <div class="card-h"><h2>Turn and mirror</h2></div>
+        <div class="card-h"><h2>Turn, mirror, straighten</h2></div>
         <div class="card-b">
+          <div class="row"><span class="lbl">Turn<small id="turnText">For a camera mounted sideways or upside down</small></span>
+            <button class="btn sm" type="button" id="btnTurn"><svg class="i"><use href="#i-turn"/></svg>Turn 90°</button></div>
           <div class="row"><label for="c-hmirror">Mirror<small>Swap left and right, like a selfie</small></label><span class="sw"><input type="checkbox" id="c-hmirror" data-var="hmirror"></span></div>
-          <div class="row"><label for="c-vflip">Upside down<small>For a camera mounted the other way up</small></label><span class="sw"><input type="checkbox" id="c-vflip" data-var="vflip"></span></div>
+          <div class="row"><span class="lbl">Straighten<small id="straText">Looking at a wall at an angle? Mark the corners of something rectangular on it, like a picture frame or a window, and the picture is straightened to fit it.</small></span>
+            <span style="display:flex;gap:6px"><button class="btn sm ghost" type="button" id="btnStraOff" hidden>Remove</button><button class="btn sm" type="button" id="btnStraighten"><svg class="i"><use href="#i-persp"/></svg>Straighten…</button></span></div>
+          <p class="muted" style="font-size:12px;margin:10px 0 0">Turning sideways and straightening change what you see and download here. Photos and clips saved on the memory card are only mirrored and turned upside down.</p>
         </div>
       </div>
     </div>
@@ -591,6 +636,17 @@ dialog code{overflow-wrap:anywhere}
               <button class="btn sm ghost" id="btnWifiForget" type="button" hidden>Forget</button></li>
           </ul>
           <div id="nStaAddrs" style="padding:0 16px 6px"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>The camera's name</h2></div>
+        <div class="card-b">
+          <p class="muted" style="margin:0 0 10px;font-size:13px">It's part of the camera's address on your home WiFi. With more than one camera, give each its own name.</p>
+          <form class="nameform" id="nameForm" novalidate>
+            <label class="addr-in" for="nameIn">http://<input type="text" id="nameIn" maxlength="32" autocapitalize="none" autocomplete="off" spellcheck="false" aria-describedby="nameNote">.local</label>
+            <button class="btn sm" type="submit" id="nameSave" disabled>Rename</button>
+          </form>
+          <p class="muted" id="nameNote" style="font-size:12px;margin:8px 0 0">Letters, numbers and dashes.</p>
         </div>
       </div>
       <div class="card">
@@ -911,6 +967,7 @@ function route() {
   const next = pages.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'live';
   if (next === page) return;
   page = next;
+  if (page !== 'live') setAdjust('');
   for (const p of pages) $('#page-' + p).classList.toggle('on', p === page);
   $$('nav.tabs a').forEach(a => a.dataset.page === page ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
   setStream(liveShown());
@@ -1069,6 +1126,7 @@ const addrHTML = (url, note) => `<div class="addr"><a href="${esc(url)}">${esc(u
 function renderStatus() {
   const w = S.wifi, ap = apOn(w), hot = viaHotspot();
   $('#brandHost').textContent = host();
+  if (document.activeElement !== $('#nameIn') && !nameEdited) { $('#nameIn').value = S.hostname || ''; renderName(); }
   $('#brandHost').title = [w.sta_ip, ap && w.ap_ip].filter(Boolean).join(' · ');
   $('#chipWifiText').textContent = w.sta_ssid || apName();
   // Only worth a chip when it's warm
@@ -1114,7 +1172,8 @@ function renderStatus() {
   const af = S.af !== 'none';
   // Nothing to frame without the video
   $('#btnFocus').hidden = !af || !canWatch();
-  $('#btnShot').hidden = $('#btnFull').hidden = $('#resPill').hidden = !canWatch();
+  $('#btnShot').hidden = $('#btnFull').hidden = $('#resPill').hidden = $('#btnAdjust').hidden = !canWatch();
+  if (!canWatch() && adjusting) setAdjust('');
   $('#focusPill').hidden = !af || !canWatch();
   $('#focusPillText').textContent = afNames[S.af] || S.af;
   const motion = imuOn() && canWatch();
@@ -1178,8 +1237,8 @@ $('#btnShot').onclick = async () => {
     if (r.status === 401) { videoReady = null; ensureVideo(); }
     if (!r.ok) throw 0;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(await r.blob());
-    a.download = 'wifi-camera-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg';
+    a.href = URL.createObjectURL(await shownPhoto(await r.blob()));
+    a.download = (S?.hostname || 'wifi-camera') + '-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg';
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast('Photo saved');
   } catch (_) { toast("Couldn't take a photo", 'bad'); }
@@ -1313,16 +1372,240 @@ function drawCompass(heading, trusted) {
 
 function frame() {
   if (page === 'live') {
+    layoutView();
+    if (drag) drawLoupe();
+    if (straightenNext && gotFrame() && V) { straightenNext = false; startStraighten(); }
     renderCamEmpty();
     if (gotFrame()) $('#resPill').textContent = `${cam.naturalWidth} × ${cam.naturalHeight}`;
   }
   requestAnimationFrame(frame);
 }
 
+// ── The picture as shown: turned, mirrored, straightened ─
+// The camera mirrors and flips (view.h); the remaining quarter turn and the
+// straightening happen here, as one transform from the frame's pixels to the
+// viewfinder. V = how /camera/status says to show it.
+let V = null, VM = null, viewKey = '';
+const I3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+const m3 = (A, B) => [0, 1, 2].flatMap(r => [0, 1, 2].map(c => A[3*r]*B[c] + A[3*r+1]*B[3+c] + A[3*r+2]*B[6+c]));
+const at = (M, x, y) => { const w = M[6]*x + M[7]*y + M[8]; return [(M[0]*x + M[1]*y + M[2]) / w, (M[3]*x + M[4]*y + M[5]) / w, w]; };
+function inv3([a, b, c, d, e, f, g, h, i]) {
+  const A = e*i - f*h, B = f*g - d*i, C = d*h - e*g, det = a*A + b*B + c*C;
+  return [A, c*h - b*i, b*f - c*e, B, a*i - c*g, c*d - a*f, C, b*g - a*h, a*e - b*d].map(v => v / det);
+}
+// Homography taking the unit square's corners (top left, top right, bottom
+// right, bottom left) to the four points q
+function fromSquare([[x0, y0], [x1, y1], [x2, y2], [x3, y3]]) {
+  const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+  const den = dx1*dy2 - dx2*dy1, g = (dx3*dy2 - dx2*dy3) / den, h = (dx1*dy3 - dx3*dy1) / den;
+  return [x1 - x0 + g*x1, x3 - x0 + h*x3, x0, y1 - y0 + g*y1, y3 - y0 + h*y3, y0, g, h, 1];
+}
+const quadPts = s => { const n = (s || '').split(',').map(Number); return n.length === 8 ? [0, 2, 4, 6].map(i => [n[i] / 1000, n[i+1] / 1000]) : null; };
+const quarter = () => V ? V.turns % 2 : 0;
+// Frame pixels → 0…1 of the picture as shown
+function pictureMatrix(nw, nh, quad) {
+  const turn = quarter() ? [0, -1/nh, 1, 1/nw, 0, 0, 0, 0, 1] : [1/nw, 0, 0, 0, 1/nh, 0, 0, 0, 1];
+  return quad ? m3(inv3(fromSquare(quad)), turn) : turn;
+}
+async function loadView() {
+  try { C = await getJSON('/camera/status'); } catch (_) { return false; }
+  V = {turns: C.rotate || 0, mirror: !!C.hmirror, quad: C.quad || ''};
+  viewKey = '';
+  renderView();
+  return true;
+}
+function renderView() {
+  const set = !!quadPts(V.quad);
+  $('#turnText').textContent = V.turns ? `Turned ${V.turns * 90}° to the right` : 'For a camera mounted sideways or upside down';
+  $('#btnStraOff').hidden = !set;
+  $('#adjMirror').setAttribute('aria-pressed', V.mirror);
+  $('#c-hmirror').checked = V.mirror;
+}
+// Every frame on Live; does the work only when something changed
+let FIT = null; // where the picture sits in the viewfinder, for the corners
+function layoutView() {
+  const box = $('#video'), on = gotFrame() && !!V, nw = cam.naturalWidth, nh = cam.naturalHeight;
+  const cw = box.clientWidth, ch = box.clientHeight, editing = !!corners;
+  // While placing corners the picture shrinks to clear the hint and the
+  // buttons, so every corner of it can be reached
+  const top = editing ? $('#straTop').offsetTop + $('#straTop').offsetHeight + 10 : 0;
+  const bottom = editing ? ch - $('#straBar').offsetTop + 10 : 0, side = editing ? 24 : 0;
+  const key = [on, nw, nh, cw, ch, V?.turns, V?.quad, editing, top, bottom].join();
+  if (key === viewKey) return;
+  viewKey = key;
+  if (!on) { cam.style.cssText = box.style.height = ''; VM = FIT = null; box.style.removeProperty('--ar'); return; }
+  const [vw, vh] = quarter() ? [nh, nw] : [nw, nh];
+  box.style.setProperty('--ar', vw / vh); // a sideways camera gets a tall viewfinder
+  // While placing corners, grow downwards for the hint and buttons where the
+  // window has room (a phone), rather than shrink the picture
+  const tall = cw * vh / vw;
+  box.style.height = editing ? Math.max(tall, Math.min(tall + top + bottom, innerHeight - 118)) + 'px' : '';
+  const k = Math.min((cw - 2*side) / vw, (ch - top - bottom) / vh);
+  FIT = {x: (cw - vw*k) / 2, y: top + (ch - top - bottom - vh*k) / 2, w: vw*k, h: vh*k};
+  // While the corners are being placed, the picture isn't straightened
+  VM = m3([FIT.w, 0, FIT.x, 0, FIT.h, FIT.y, 0, 0, 1], pictureMatrix(nw, nh, editing ? null : quadPts(V.quad)));
+  const m = VM;
+  cam.style.cssText = `inset:auto;left:0;top:0;width:${nw}px;height:${nh}px;object-fit:fill;transform-origin:0 0;` +
+    `transform:matrix3d(${m[0]},${m[3]},0,${m[6]},${m[1]},${m[4]},0,${m[7]},0,0,1,0,${m[2]},${m[5]},0,${m[8]})`;
+  if (editing) drawCorners();
+}
+// The downloaded photo, as shown here: the camera sends it only mirrored and
+// flipped, so turn and straighten it the same way (bilinear, on a canvas)
+async function shownPhoto(blob) {
+  const quad = quadPts(V?.quad);
+  if (!quarter() && !quad) return blob;
+  const img = await createImageBitmap(blob), nw = img.width, nh = img.height;
+  const [vw, vh] = quarter() ? [nh, nw] : [nw, nh];
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d');
+  cv.width = nw; cv.height = nh; cx.drawImage(img, 0, 0);
+  const src = cx.getImageData(0, 0, nw, nh).data, out = new ImageData(vw, vh), o = out.data;
+  const B = inv3(pictureMatrix(nw, nh, quad)); // 0…1 as shown → frame pixels
+  for (let y = 0; y < vh; y++) for (let x = 0; x < vw; x++) {
+    const u = (x + .5) / vw, v = (y + .5) / vh, w = B[6]*u + B[7]*v + B[8];
+    const sx = Math.min(nw - 1, Math.max(0, (B[0]*u + B[1]*v + B[2]) / w - .5));
+    const sy = Math.min(nh - 1, Math.max(0, (B[3]*u + B[4]*v + B[5]) / w - .5));
+    const x0 = sx | 0, y0 = sy | 0, x1 = Math.min(x0 + 1, nw - 1), y1 = Math.min(y0 + 1, nh - 1), fx = sx - x0, fy = sy - y0;
+    const i00 = (y0*nw + x0) * 4, i10 = (y0*nw + x1) * 4, i01 = (y1*nw + x0) * 4, i11 = (y1*nw + x1) * 4, d = (y*vw + x) * 4;
+    for (let c = 0; c < 3; c++)
+      o[d+c] = (src[i00+c] * (1-fx) + src[i10+c] * fx) * (1-fy) + (src[i01+c] * (1-fx) + src[i11+c] * fx) * fy;
+    o[d+3] = 255;
+  }
+  cv.width = vw; cv.height = vh; cx.putImageData(out, 0, 0);
+  return new Promise(res => cv.toBlob(b => res(b || blob), 'image/jpeg', .92));
+}
+
+// Live: Adjust → Turn / Mirror / Straighten; Straighten → drag four corners
+let adjusting = '', corners = null, straightenNext = false;
+function setAdjust(mode) {
+  adjusting = mode;
+  if (mode !== 'straighten') corners = drag = null;
+  $('#liveBar').hidden = !!mode;
+  $('#adjBar').hidden = mode !== 'menu';
+  $('#straBar').hidden = $('#straTop').hidden = $('#stra').hidden = mode !== 'straighten';
+  $('#liveTop').hidden = mode === 'straighten';
+  viewKey = '';
+}
+const turnRight = () => setCam('rotate', V.mirror ? (V.turns + 3) % 4 : (V.turns + 1) % 4); // "right" as seen, mirrored or not
+$('#btnAdjust').onclick = () => setAdjust('menu');
+$('#adjDone').onclick = () => setAdjust('');
+$('#adjTurn').onclick = $('#btnTurn').onclick = () => V && turnRight();
+$('#adjMirror').onclick = () => V && setCam('hmirror', V.mirror ? 0 : 1);
+$('#adjStraighten').onclick = () => startStraighten();
+$('#btnStraighten').onclick = () => { straightenNext = true; location.hash = '#live'; };
+$('#btnStraOff').onclick = $('#straOff').onclick = async () => { if (await setCam('quad', '', 'Straightening removed')) setAdjust(''); };
+$('#straCancel').onclick = () => setAdjust('menu');
+function startStraighten() {
+  if (!V) return;
+  if (!gotFrame()) return toast('Wait for the video to show, then mark the corners on it', 'bad');
+  corners = quadPts(V.quad) || [[.15, .15], [.85, .15], [.85, .85], [.15, .85]];
+  $('#straOff').hidden = !quadPts(V.quad);
+  setAdjust('straighten');
+}
+// Round the edge clockwise from the top left, whichever handle went where
+function inOrder(q) {
+  const cx = q.reduce((s, p) => s + p[0], 0) / 4, cy = q.reduce((s, p) => s + p[1], 0) / 4;
+  const r = [...q].sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+  const first = r.reduce((best, p, i) => p[0] + p[1] < r[best][0] + r[best][1] ? i : best, 0);
+  return [...r.slice(first), ...r.slice(0, first)];
+}
+// What the camera would say (view.h): '' fine, 'dent' a corner inside the
+// others, 'small' under 0.25 % of the picture
+function cornersWhy(q) {
+  let area = 0;
+  for (let i = 0; i < 4; i++) {
+    const [a, b, c] = [q[i], q[(i+1) % 4], q[(i+2) % 4]];
+    if ((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) <= 0) return 'dent';
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  return area / 2 >= .0025 ? '' : 'small';
+}
+const HINTS = {
+  '': 'Drag each corner onto a corner of something rectangular on the wall, like a picture frame or a window.',
+  dent: 'One corner is inside the others. Drag it out so the four corners make a box.',
+  small: 'That\'s too small to fill the screen. Mark something bigger.'};
+const svgNS = 'http://www.w3.org/2000/svg';
+const cornerPx = i => [FIT.x + corners[i][0] * FIT.w, FIT.y + corners[i][1] * FIT.h];
+let drag = null; // {i, dx, dy}: the corner being dragged, and where on it the finger is
+function drawCorners() {
+  const svg = $('#stra svg');
+  if (!FIT || !corners) return;
+  while (svg.children.length < 5) {
+    const c = document.createElementNS(svgNS, 'circle');
+    c.setAttribute('class', 'dot'); c.setAttribute('r', 9);
+    svg.append(c);
+  }
+  const px = corners.map((_, i) => cornerPx(i));
+  svg.querySelector('polygon').setAttribute('points', px.map(p => p.join(',')).join(' '));
+  [...svg.querySelectorAll('circle')].forEach((c, i) => {
+    c.setAttribute('cx', px[i][0]); c.setAttribute('cy', px[i][1]);
+    c.classList.toggle('on', drag?.i === i); // the magnifier shows it
+  });
+  const why = cornersWhy(inOrder(corners));
+  $('#stra').classList.toggle('bad', !!why);
+  $('#straSave').disabled = !!why;
+  $('#straHint').textContent = HINTS[why];
+  drawLoupe();
+}
+// The picture around the corner being dragged, 3–6× (about the camera's own
+// pixels), above the finger so it isn't hidden
+function drawLoupe() {
+  const lp = $('#loupe');
+  lp.hidden = !drag;
+  if (!drag || !VM) return;
+  const d = devicePixelRatio || 1, L = 132, R = L / 2, box = $('#video'), [px, py] = cornerPx(drag.i);
+  const Z = Math.max(3, Math.min(6, (quarter() ? cam.naturalHeight : cam.naturalWidth) / FIT.w));
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const ly = py - L - 48 >= 4 ? py - L - 48 : py + 48; // below when there's no room above
+  lp.style.left = clamp(px - R, 4, box.clientWidth - L - 4) + 'px';
+  lp.style.top = clamp(ly, 4, box.clientHeight - L - 4) + 'px';
+  if (lp.width !== L * d) lp.width = lp.height = L * d;
+  const g = lp.getContext('2d'), m = VM; // no straightening while editing: VM is affine
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = '#000'; g.fillRect(0, 0, lp.width, lp.height);
+  g.setTransform(d*Z*m[0], d*Z*m[3], d*Z*m[1], d*Z*m[4], d*(Z*m[2] + R - Z*px), d*(Z*m[5] + R - Z*py));
+  try { g.drawImage(cam, 0, 0); } catch (_) {}
+  // The shape's edges, and a cross on the corner itself
+  g.setTransform(d, 0, 0, d, 0, 0);
+  const near = ([x, y]) => [R + Z * (x - px), R + Z * (y - py)];
+  g.strokeStyle = '#ff3d8b'; g.lineWidth = 1.5;
+  g.beginPath(); corners.forEach((_, i) => g[i ? 'lineTo' : 'moveTo'](...near(cornerPx(i)))); g.closePath(); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(R - 12, R); g.lineTo(R + 12, R); g.moveTo(R, R - 12); g.lineTo(R, R + 12); g.stroke();
+  g.strokeStyle = '#fff'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(R - 12, R); g.lineTo(R + 12, R); g.moveTo(R, R - 12); g.lineTo(R, R + 12); g.stroke();
+}
+// The nearest corner within reach of the finger moves, from where it was
+// grabbed: corners close together can't be mixed up, and nothing jumps
+const inVideo = e => { const r = $('#video').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+$('#stra').onpointerdown = e => {
+  if (!FIT || !corners) return;
+  const [x, y] = inVideo(e);
+  let best = -1, reach = 40 ** 2;
+  corners.forEach((_, i) => { const [cx, cy] = cornerPx(i), dd = (cx - x) ** 2 + (cy - y) ** 2; if (dd < reach) { reach = dd; best = i; } });
+  if (best < 0) return;
+  e.preventDefault();
+  $('#stra').setPointerCapture(e.pointerId);
+  const [cx, cy] = cornerPx(best);
+  drag = {i: best, dx: cx - x, dy: cy - y};
+  drawCorners();
+};
+$('#stra').onpointermove = e => {
+  if (!drag) return;
+  const [x, y] = inVideo(e), clamp = v => Math.min(1, Math.max(0, v));
+  corners[drag.i] = [clamp((x + drag.dx - FIT.x) / FIT.w), clamp((y + drag.dy - FIT.y) / FIT.h)];
+  drawCorners();
+};
+$('#stra').onpointerup = $('#stra').onpointercancel = () => { drag = null; drawCorners(); };
+$('#straSave').onclick = async () => {
+  const q = inOrder(corners);
+  if (cornersWhy(q)) return;
+  if (await setCam('quad', q.flat().map(v => Math.round(v * 1000)).join(','), 'Picture straightened')) setAdjust('');
+};
+
 // ── Picture settings ──────────────────────────────────
 let C = null;
 async function loadCamera() {
-  try { C = await getJSON('/camera/status'); } catch (_) { toast("Couldn't read the picture settings", 'bad'); return; }
+  if (!(await loadView())) { toast("Couldn't read the picture settings", 'bad'); return; }
   $$('[data-var]').forEach(el => {
     const v = C[el.dataset.var];
     el.closest('.row').hidden = v === undefined; // e.g. night mode: OV5640 only
@@ -1346,7 +1629,8 @@ function renderAf(mode, state) {
 async function setCam(v, val, okMsg, el) {
   try {
     await authed(`/camera/set?var=${v}&val=${val}`, {method: 'POST'});
-    el ? saved(el) : toast(okMsg);
+    el ? saved(el) : okMsg && toast(okMsg);
+    if (['hmirror', 'rotate', 'quad'].includes(v)) loadView(); // the corners move with the picture
     if (v === 'af' && C) { C.af = val === 1 ? C.af : val; setTimeout(loadCamera, 900); }
     return true;
   } catch (e) { toast(/password/i.test(e.message) ? e.message : "Couldn't change that setting", 'bad'); return false; }
@@ -1366,6 +1650,39 @@ $('#btnCamReset').onclick = async () => {
   if (!(await ask('Reset the picture settings?', 'Size, quality, focus, light and color go back to how they came. The camera restarts.', 'Reset', true))) return;
   try { await authed('/camera/reset', {method: 'POST'}); watchRestart('reboot'); }
   catch (e) { toast(e.message, 'bad'); }
+};
+
+// ── WiFi: the camera's name ───────────────────────────
+// http://<name>.local. Typing turns it into what a name may be (hostname_rules.h)
+let nameEdited = false;
+const nameOk = n => /^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$/.test(n);
+function renderName() {
+  const n = $('#nameIn').value, same = n === S?.hostname;
+  $('#nameSave').disabled = same || !nameOk(n);
+  $('#nameNote').textContent = !n ? 'Type a name.' : !nameOk(n) && n.endsWith('-') ? "A name can't end with a dash."
+    : same ? `Open it at http://${n}.local on your home WiFi.` : `The address becomes http://${n}.local`;
+}
+$('#nameIn').oninput = () => {
+  const el = $('#nameIn');
+  el.value = el.value.toLowerCase().replace(/[\s_.]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/^-+/, '').slice(0, 32);
+  nameEdited = true;
+  renderName();
+};
+$('#nameForm').onsubmit = async e => {
+  e.preventDefault();
+  const n = $('#nameIn').value, old = S?.hostname;
+  if (!nameOk(n) || n === old) return;
+  const here = location.hostname === old + '.local';
+  if (!(await ask(`Rename the camera to ${n}?`, `Its address becomes http://${n}.local, and http://${old}.local stops working: update your bookmarks and other devices.` +
+      (here ? ' This page moves to the new address, where you enter the password once more.' : ''), 'Rename'))) return;
+  try {
+    await authed(`/wifi/hostname?name=${n}`, {method: 'POST'});
+    nameEdited = false;
+    S.hostname = n; renderStatus();
+    if (!here) return toast(`Renamed. The camera is at http://${n}.local`);
+    toast(`Renamed. Moving to http://${n}.local…`);
+    setTimeout(() => { location.href = `http://${n}.local${location.port ? ':' + location.port : ''}/${location.hash}`; }, 2500);
+  } catch (err) { toast(err.message, 'bad'); }
 };
 
 // ── WiFi: finding and joining networks ────────────────
@@ -1868,12 +2185,13 @@ async function pollDetectLive() {
   const res = D.state === 'running' && D.age_ms < 4000 ? D.results : [];
   $('#detChips').innerHTML = res.filter(r => r.x < 0)
     .map(r => `<span class="pill">${icon('paw')}${esc(r.label)} ${Math.round(r.score * 100)}%</span>`).join('');
-  // Grid models say where: onto the picture as shown (object-fit: contain)
-  const box = $('#video').getBoundingClientRect(), nw = cam.naturalWidth || 4, nh = cam.naturalHeight || 3;
-  const k = Math.min(box.width / nw, box.height / nh), w = nw * k, h = nh * k, x0 = (box.width - w) / 2, y0 = (box.height - h) / 2;
-  $('#detDots').innerHTML = !gotFrame() ? '' : res.filter(r => r.x >= 0).map(r => {
-    const at = `left:${(x0 + r.x * w).toFixed(0)}px;top:${(y0 + r.y * h).toFixed(0)}px`;
-    return `<i style="${at}"></i><span style="${at}">${esc(r.label)} ${Math.round(r.score * 100)}%</span>`;
+  // Grid models say where in the frame: onto the picture as shown
+  const box = $('#video'), M = gotFrame() && VM;
+  $('#detDots').innerHTML = !M ? '' : res.filter(r => r.x >= 0).map(r => {
+    const [x, y, w] = at(M, r.x * cam.naturalWidth, r.y * cam.naturalHeight);
+    if (w <= 0 || x < 0 || y < 0 || x > box.clientWidth || y > box.clientHeight) return ''; // straightened away
+    const pos = `left:${x.toFixed(0)}px;top:${y.toFixed(0)}px`;
+    return `<i style="${pos}"></i><span style="${pos}">${esc(r.label)} ${Math.round(r.score * 100)}%</span>`;
   }).join('');
 }
 const MODEL_MAX = 0x360000 - 4096; // the "spiffs" partition, minus its header
@@ -1909,6 +2227,7 @@ $('#btnModelDel').onclick = async () => {
 // ── Start ─────────────────────────────────────────────
 renderTheme();
 renderTok();
+loadView();
 route();
 pollStatus();
 requestAnimationFrame(frame);

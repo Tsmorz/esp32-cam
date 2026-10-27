@@ -34,7 +34,7 @@ Everything on screen is in plain words — "password", "software update", "motio
 |------|--------------|
 | **Setup** | Opens by itself on a new camera, or one reached over its own WiFi that isn't on a home network yet: password → home WiFi → the address to use from now on. Settings → *Start setup* runs it again |
 | **Live** | The video, as large as the window allows, with its size, focus state, the direction it faces, focus, photo (to this device), save and record (to the memory card), full screen, and what the animal model sees (names, or marks where). With the motion sensor: a compass, side and front tilt, and compass calibration (turn the camera in every direction; it finishes by itself) |
-| **Picture** | Size and quality (presets), focus, mirror / upside down, light, color, look. Applied instantly and **kept across restarts** |
+| **Picture** | Size and quality (presets), focus, turn (90° steps), mirror, straighten a wall seen at an angle, light, color, look. Applied instantly and **kept across restarts** |
 | **Photos** | What's on the memory card: a gallery (clips play in the page), download, delete; take a photo or record; automatic photos and clips — timelapse, when the camera is moved, when an animal is seen |
 | **WiFi** | Home WiFi with signal and the addresses to open, the camera's own WiFi (on/off), find and connect to a network, forget it |
 | **Settings** | Version, temperature, motion sensor; animal detection (model upload, on/off, how sure, which animals); sleep; software update; password; set up again, restart, reset (picture, WiFi, compass, add-on settings, password, everything). *Advanced details* has the add-ons' wiring (which GPIO each wire goes to) |
@@ -84,8 +84,9 @@ Control server, port **80**:
 | `GET /snapshot` 🎥 | One JPEG frame at the stream's size |
 | `GET /wifi/scan[?refresh=1]` | Nearby networks. Never blocks: answers `{"scanning":true}` while a scan runs — ask again until it doesn't (`refresh=1` starts a new one) |
 | `GET /stream` | 302 redirect to `:81/stream` |
-| `POST /camera/set?var=&val=` 🔒 | `framesize`, `quality` (4–63), `brightness`/`contrast`/`saturation`/`sharpness`/`ae_level` (−2…2), `awb`, `aec`, `agc`, `hmirror`, `vflip` (0/1), `wb_mode` (0–4), `af` (0 infinity, 1 focus once, 2 continuous) |
+| `POST /camera/set?var=&val=` 🔒 | `framesize`, `quality` (4–63), `brightness`/`contrast`/`saturation`/`sharpness`/`ae_level` (−2…2), `awb`, `aec`, `agc`, `hmirror` (0/1), `rotate` (quarter turns clockwise, 0–3), `quad` (straightening: `x0,y0,…,x3,y3` in thousandths of the picture as shown, clockwise from top left; empty = off), `wb_mode` (0–4), `af` (0 infinity, 1 focus once, 2 continuous) |
 | `POST /wifi/connect` 🔒 | `{"ssid","pass"}` — joins the network, and remembers it once it worked |
+| `POST /wifi/hostname?name=` 🔒 | Rename the camera: `http://<name>.local` (1–32 lowercase letters, numbers and dashes) |
 | `POST /ota` 🔒 | Raw `firmware.bin`; reboots on success. Refused while the last update is still on probation (`ota_pending`) |
 | `POST /camera/reset` 🔒 | Forget saved camera settings and reboot |
 | `POST /imu/compass?do=` 🔒 | `start` a compass calibration, `finish` it (400 until enough rotation was seen), `cancel`, or `clear` the stored one |
